@@ -4,15 +4,20 @@ import PackageDescription
 
 let package = Package(
     name: "LidWarp",
+
     platforms: [
         .macOS(.v13)
     ],
+
     products: [
         .executable(
             name: "RetroPhosphor",
-            targets: ["RetroPhosphor"]
+            targets: [
+                "RetroPhosphor"
+            ]
         )
     ],
+
     targets: [
         .executableTarget(
             name: "RetroPhosphor",
