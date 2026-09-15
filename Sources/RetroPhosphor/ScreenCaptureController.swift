@@ -1,37 +1,69 @@
 import AppKit
-import CoreImage
 import ScreenCaptureKit
+import CoreImage
 
 final class ScreenCaptureController: NSObject, SCStreamOutput, SCStreamDelegate {
+
+    // MARK: - Capture
+
     private var stream: SCStream?
-    private let queue = DispatchQueue(label: "com.retro-phosphor.capture", qos: .userInteractive)
-    private let ciContext = CIContext(options: [CIContextOption.priorityRequestLow: false])
+
+    private let captureQueue = DispatchQueue(
+        label: "com.retro-phosphor.capture",
+        qos: .userInitiated
+    )
+
+    // Reuse one Core Image context instead of creating one for every frame.
+    private let ciContext = CIContext(options: [
+        .cacheIntermediates: false
+    ])
+
+    // Only keep the newest frame.
+    // This prevents the UI from falling behind when the Mac is busy.
     private var continuation: AsyncStream<CGImage>.Continuation?
 
-    func hasScreenCapturePermission() -> Bool {
-        CGPreflightScreenCaptureAccess()
-    }
+    // MARK: - Permission
 
-    @discardableResult
-    func requestScreenRecordingAccess() -> Bool {
-        CGRequestScreenCaptureAccess()
-    }
+    func hasScreenCapturePermission() async -> Bool {
+        do {
+            _ = try await SCShareableContent.excludingDesktopWindows(
+                false,
+                onScreenWindowsOnly: true
+            )
 
-    func frames() -> AsyncStream<CGImage> {
-        AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
-            self.continuation?.finish()
-            self.continuation = continuation
-            continuation.onTermination = { [weak self] _ in
-                self?.continuation = nil
-            }
+            return true
+        } catch {
+            return false
         }
     }
 
-    func start(for screen: NSScreen, excluding window: NSWindow?) async throws {
-        guard stream == nil else { return }
+    func requestContent() async {
+        _ = try? await SCShareableContent.excludingDesktopWindows(
+            false,
+            onScreenWindowsOnly: true
+        )
+    }
 
-        guard hasScreenCapturePermission() else {
-            throw CaptureError.permissionDenied
+    // MARK: - Frames
+
+    func frames() -> AsyncStream<CGImage> {
+        AsyncStream(
+            bufferingPolicy: .bufferingNewest(1)
+        ) { continuation in
+            self.continuation = continuation
+        }
+    }
+
+    // MARK: - Start
+
+    func start(
+        for screen: NSScreen,
+        excluding window: NSWindow?
+    ) async throws {
+
+        // Don't create another capture stream if one is already running.
+        guard stream == nil else {
+            return
         }
 
         let content = try await SCShareableContent.excludingDesktopWindows(
@@ -39,118 +71,180 @@ final class ScreenCaptureController: NSObject, SCStreamOutput, SCStreamDelegate 
             onScreenWindowsOnly: true
         )
 
-        guard let display = matchingDisplay(for: screen, in: content.displays) else {
+        guard let display = findDisplay(
+            matching: screen,
+            in: content.displays
+        ) else {
             throw CaptureError.noDisplay
         }
 
-        let excludedWindows: [SCWindow]
-        if let windowNumber = window?.windowNumber, windowNumber > 0 {
-            let id = CGWindowID(windowNumber)
-            excludedWindows = content.windows.filter { $0.windowID == id }
-        } else {
-            excludedWindows = []
-        }
+        let configuration = SCStreamConfiguration()
+
+        configuration.width = display.width
+        configuration.height = display.height
+
+        configuration.minimumFrameInterval = CMTime(
+            value: 1,
+            timescale: 30
+        )
+
+        configuration.queueDepth = 3
+        configuration.pixelFormat = kCVPixelFormatType_32BGRA
+        configuration.showsCursor = false
+
+        // Find our own overlay window and explicitly exclude it.
+        //
+        // This prevents the classic screen-capture feedback loop:
+        //
+        // screen
+        //   -> overlay
+        //   -> captured again
+        //   -> overlay
+        //   -> captured again...
+        let excludedWindows = findExcludedWindows(
+            window,
+            in: content.windows
+        )
 
         let filter = SCContentFilter(
             display: display,
             excludingWindows: excludedWindows
         )
 
-        let config = SCStreamConfiguration()
-        config.width = max(display.width, 1)
-        config.height = max(display.height, 1)
-        config.minimumFrameInterval = CMTime(value: 1, timescale: 30)
-        config.queueDepth = 3
-        config.pixelFormat = kCVPixelFormatType_32BGRA
-        config.showsCursor = false
-        config.capturesAudio = false
-        config.captureMicrophone = false
-        config.includeChildWindows = false
-        config.shouldBeOpaque = true
-        config.ignoreShadowsDisplay = true
+        let newStream = SCStream(
+            filter: filter,
+            configuration: configuration,
+            delegate: self
+        )
 
-        let newStream = SCStream(filter: filter, configuration: config, delegate: self)
         try newStream.addStreamOutput(
             self,
             type: .screen,
-            sampleHandlerQueue: queue
+            sampleHandlerQueue: captureQueue
         )
 
         stream = newStream
-        do {
-            try await newStream.startCapture()
-        } catch {
-            try? newStream.removeStreamOutput(self, type: .screen)
-            stream = nil
-            throw error
-        }
+
+        try await newStream.startCapture()
     }
 
+    // MARK: - Stop
+
     func stop() async {
-        guard let stream else {
-            continuation?.finish()
-            continuation = nil
+
+        guard let currentStream = stream else {
+            finishFrames()
             return
         }
 
-        try? stream.removeStreamOutput(self, type: .screen)
-        try? await stream.stopCapture()
-        self.stream = nil
+        stream = nil
+
+        try? await currentStream.stopCapture()
+
+        finishFrames()
+    }
+
+    private func finishFrames() {
         continuation?.finish()
         continuation = nil
     }
 
-    private func matchingDisplay(for screen: NSScreen, in displays: [SCDisplay]) -> SCDisplay? {
-        let target = screen.frame
+    // MARK: - Display Matching
 
-        if let exact = displays.first(where: {
-            abs($0.frame.origin.x - target.origin.x) < 1 &&
-            abs($0.frame.origin.y - target.origin.y) < 1 &&
-            abs($0.frame.width - target.width) < 1 &&
-            abs($0.frame.height - target.height) < 1
+    private func findDisplay(
+        matching screen: NSScreen,
+        in displays: [SCDisplay]
+    ) -> SCDisplay? {
+
+        let targetFrame = screen.frame
+
+        // Prefer an exact coordinate/size match.
+        if let exactMatch = displays.first(where: { display in
+            display.frame.origin.x == targetFrame.origin.x &&
+            display.frame.origin.y == targetFrame.origin.y &&
+            display.frame.width == targetFrame.width &&
+            display.frame.height == targetFrame.height
         }) {
-            return exact
+            return exactMatch
         }
 
-        return displays.first {
-            abs($0.frame.width - target.width) < 2 &&
-            abs($0.frame.height - target.height) < 2
+        // Fall back to the first available display.
+        return displays.first
+    }
+
+    // MARK: - Window Exclusion
+
+    private func findExcludedWindows(
+        _ window: NSWindow?,
+        in windows: [SCWindow]
+    ) -> [SCWindow] {
+
+        guard let window else {
+            return []
+        }
+
+        // NSWindow.windowNumber is main-actor isolated on newer SDKs.
+        // This method is called from the async/main-actor flow, so obtain
+        // the number before comparing it with ScreenCaptureKit windows.
+        let number = window.windowNumber
+
+        guard number > 0 else {
+            return []
+        }
+
+        let windowID = CGWindowID(number)
+
+        return windows.filter { screenCaptureWindow in
+            screenCaptureWindow.windowID == windowID
         }
     }
+
+    // MARK: - ScreenCaptureKit Output
 
     func stream(
         _ stream: SCStream,
         didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
         of outputType: SCStreamOutputType
     ) {
-        guard outputType == .screen,
-              sampleBuffer.isValid,
-              let pixelBuffer = sampleBuffer.imageBuffer else { return }
 
-        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-        guard let image = ciContext.createCGImage(ciImage, from: ciImage.extent) else {
+        guard outputType == .screen else {
             return
         }
 
-        continuation?.yield(image)
-    }
-
-    func stream(_ stream: SCStream, didStopWithError error: Error) {
-        continuation?.finish()
-        continuation = nil
-    }
-
-    enum CaptureError: LocalizedError {
-        case permissionDenied
-        case noDisplay
-
-        var errorDescription: String? {
-            switch self {
-            case .permissionDenied:
-                return "Screen Recording permission is required."
-            case .noDisplay:
-                return "The selected display is no longer available."
-            }
+        guard let pixelBuffer = sampleBuffer.imageBuffer else {
+            return
         }
+
+        let image = CIImage(
+            cvPixelBuffer: pixelBuffer
+        )
+
+        guard let cgImage = ciContext.createCGImage(
+            image,
+            from: image.extent
+        ) else {
+            return
+        }
+
+        // bufferingNewest(1) means old frames are discarded when necessary.
+        continuation?.yield(cgImage)
+    }
+
+    // MARK: - Stream Errors
+
+    func stream(
+        _ stream: SCStream,
+        didStopWithError error: Error
+    ) {
+
+        self.stream = nil
+
+        finishFrames()
+    }
+
+    // MARK: - Errors
+
+    enum CaptureError: Error {
+        case noDisplay
     }
 }
