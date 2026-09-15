@@ -20,7 +20,10 @@ struct MenuContent: View {
                         : "display.slash"
                 )
             }
-            .disabled(model.isPreparing || !model.captureAvailable)
+            .disabled(
+                model.isPreparing ||
+                !model.captureAvailable
+            )
 
             Divider()
 
@@ -34,7 +37,7 @@ struct MenuContent: View {
 
             // MARK: - Fold
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 5) {
                 Text("Fold simulation")
                     .font(.caption)
 
@@ -45,7 +48,9 @@ struct MenuContent: View {
 
                 HStack {
                     Text("Flat")
+
                     Spacer()
+
                     Text("Folded")
                 }
                 .font(.caption2)
@@ -73,7 +78,10 @@ struct MenuContent: View {
                 )
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+                .fixedSize(
+                    horizontal: false,
+                    vertical: true
+                )
             }
 
             Divider()
@@ -90,6 +98,6 @@ struct MenuContent: View {
             }
         }
         .padding(8)
-        .frame(width: 240)
+        .frame(width: 250)
     }
 }
