@@ -2,9 +2,12 @@ import AppKit
 import ScreenCaptureKit
 import CoreImage
 
-final class ScreenCaptureController: NSObject, SCStreamOutput, SCStreamDelegate {
+final class ScreenCaptureController: NSObject,
+    SCStreamOutput,
+    SCStreamDelegate
+{
 
-    // MARK: - Capture
+    // MARK: - Capture State
 
     private var stream: SCStream?
 
@@ -13,23 +16,24 @@ final class ScreenCaptureController: NSObject, SCStreamOutput, SCStreamDelegate 
         qos: .userInitiated
     )
 
-    // Reuse one Core Image context instead of creating one for every frame.
-    private let ciContext = CIContext(options: [
-        .cacheIntermediates: false
-    ])
+    private let ciContext = CIContext(
+        options: [
+            .cacheIntermediates: false
+        ]
+    )
 
-    // Only keep the newest frame.
-    // This prevents the UI from falling behind when the Mac is busy.
-    private var continuation: AsyncStream<CGImage>.Continuation?
+    private var continuation:
+        AsyncStream<CGImage>.Continuation?
 
     // MARK: - Permission
 
     func hasScreenCapturePermission() async -> Bool {
         do {
-            _ = try await SCShareableContent.excludingDesktopWindows(
-                false,
-                onScreenWindowsOnly: true
-            )
+            _ = try await SCShareableContent
+                .excludingDesktopWindows(
+                    false,
+                    onScreenWindowsOnly: true
+                )
 
             return true
         } catch {
@@ -38,10 +42,11 @@ final class ScreenCaptureController: NSObject, SCStreamOutput, SCStreamDelegate 
     }
 
     func requestContent() async {
-        _ = try? await SCShareableContent.excludingDesktopWindows(
-            false,
-            onScreenWindowsOnly: true
-        )
+        _ = try? await SCShareableContent
+            .excludingDesktopWindows(
+                false,
+                onScreenWindowsOnly: true
+            )
     }
 
     // MARK: - Frames
@@ -57,22 +62,22 @@ final class ScreenCaptureController: NSObject, SCStreamOutput, SCStreamDelegate 
     // MARK: - Start
 
     func start(
-        for screen: NSScreen,
-        excluding window: NSWindow?
+        matchingScreenFrame screenFrame: CGRect,
+        excludingWindowID windowID: CGWindowID
     ) async throws {
 
-        // Don't create another capture stream if one is already running.
         guard stream == nil else {
             return
         }
 
-        let content = try await SCShareableContent.excludingDesktopWindows(
-            false,
-            onScreenWindowsOnly: true
-        )
+        let content = try await SCShareableContent
+            .excludingDesktopWindows(
+                false,
+                onScreenWindowsOnly: true
+            )
 
         guard let display = findDisplay(
-            matching: screen,
+            matching: screenFrame,
             in: content.displays
         ) else {
             throw CaptureError.noDisplay
@@ -89,22 +94,15 @@ final class ScreenCaptureController: NSObject, SCStreamOutput, SCStreamDelegate 
         )
 
         configuration.queueDepth = 3
-        configuration.pixelFormat = kCVPixelFormatType_32BGRA
+
+        configuration.pixelFormat =
+            kCVPixelFormatType_32BGRA
+
         configuration.showsCursor = false
 
-        // Find our own overlay window and explicitly exclude it.
-        //
-        // This prevents the classic screen-capture feedback loop:
-        //
-        // screen
-        //   -> overlay
-        //   -> captured again
-        //   -> overlay
-        //   -> captured again...
-        let excludedWindows = findExcludedWindows(
-            window,
-            in: content.windows
-        )
+        let excludedWindows = content.windows.filter {
+            $0.windowID == windowID
+        }
 
         let filter = SCContentFilter(
             display: display,
@@ -131,7 +129,6 @@ final class ScreenCaptureController: NSObject, SCStreamOutput, SCStreamDelegate 
     // MARK: - Stop
 
     func stop() async {
-
         guard let currentStream = stream else {
             finishFrames()
             return
@@ -152,51 +149,50 @@ final class ScreenCaptureController: NSObject, SCStreamOutput, SCStreamDelegate 
     // MARK: - Display Matching
 
     private func findDisplay(
-        matching screen: NSScreen,
+        matching screenFrame: CGRect,
         in displays: [SCDisplay]
     ) -> SCDisplay? {
 
-        let targetFrame = screen.frame
-
-        // Prefer an exact coordinate/size match.
         if let exactMatch = displays.first(where: { display in
-            display.frame.origin.x == targetFrame.origin.x &&
-            display.frame.origin.y == targetFrame.origin.y &&
-            display.frame.width == targetFrame.width &&
-            display.frame.height == targetFrame.height
+            display.frame.origin.x == screenFrame.origin.x &&
+            display.frame.origin.y == screenFrame.origin.y &&
+            display.frame.width == screenFrame.width &&
+            display.frame.height == screenFrame.height
         }) {
             return exactMatch
         }
 
-        // Fall back to the first available display.
-        return displays.first
+        // If coordinate systems differ slightly between
+        // AppKit and ScreenCaptureKit, choose the display
+        // whose center is closest to the requested screen.
+        let targetCenter = CGPoint(
+            x: screenFrame.midX,
+            y: screenFrame.midY
+        )
+
+        return displays.min { lhs, rhs in
+            distance(
+                from: lhs.frame.center,
+                to: targetCenter
+            ) <
+            distance(
+                from: rhs.frame.center,
+                to: targetCenter
+            )
+        }
     }
 
-    // MARK: - Window Exclusion
+    private func distance(
+        from lhs: CGPoint,
+        to rhs: CGPoint
+    ) -> CGFloat {
 
-    private func findExcludedWindows(
-        _ window: NSWindow?,
-        in windows: [SCWindow]
-    ) -> [SCWindow] {
+        let dx = lhs.x - rhs.x
+        let dy = lhs.y - rhs.y
 
-        guard let window else {
-            return []
-        }
-
-        // NSWindow.windowNumber is main-actor isolated on newer SDKs.
-        // This method is called from the async/main-actor flow, so obtain
-        // the number before comparing it with ScreenCaptureKit windows.
-        let number = window.windowNumber
-
-        guard number > 0 else {
-            return []
-        }
-
-        let windowID = CGWindowID(number)
-
-        return windows.filter { screenCaptureWindow in
-            screenCaptureWindow.windowID == windowID
-        }
+        return sqrt(
+            (dx * dx) + (dy * dy)
+        )
     }
 
     // MARK: - ScreenCaptureKit Output
@@ -211,7 +207,9 @@ final class ScreenCaptureController: NSObject, SCStreamOutput, SCStreamDelegate 
             return
         }
 
-        guard let pixelBuffer = sampleBuffer.imageBuffer else {
+        guard let pixelBuffer =
+            sampleBuffer.imageBuffer
+        else {
             return
         }
 
@@ -219,18 +217,19 @@ final class ScreenCaptureController: NSObject, SCStreamOutput, SCStreamDelegate 
             cvPixelBuffer: pixelBuffer
         )
 
-        guard let cgImage = ciContext.createCGImage(
-            image,
-            from: image.extent
-        ) else {
+        guard let cgImage =
+            ciContext.createCGImage(
+                image,
+                from: image.extent
+            )
+        else {
             return
         }
 
-        // bufferingNewest(1) means old frames are discarded when necessary.
         continuation?.yield(cgImage)
     }
 
-    // MARK: - Stream Errors
+    // MARK: - Capture Failure
 
     func stream(
         _ stream: SCStream,
@@ -246,5 +245,16 @@ final class ScreenCaptureController: NSObject, SCStreamOutput, SCStreamDelegate 
 
     enum CaptureError: Error {
         case noDisplay
+    }
+}
+
+// MARK: - CGRect Convenience
+
+private extension CGRect {
+    var center: CGPoint {
+        CGPoint(
+            x: midX,
+            y: midY
+        )
     }
 }
