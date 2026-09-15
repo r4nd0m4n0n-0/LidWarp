@@ -1,53 +1,95 @@
-import AppKit
 import SwiftUI
 
 struct MenuContent: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
-        Button(model.isEnabled ? "Disable Effect" : "Enable Effect") {
-            model.isEnabled.toggle()
-        }
-        .disabled(model.isEnabled == false && !model.captureAvailable)
+        VStack(alignment: .leading, spacing: 8) {
 
-        Divider()
+            // MARK: - Main Control
 
-        Toggle("Retro Phosphor Green", isOn: $model.phosphorGreen)
-            .disabled(!model.captureAvailable && model.isEnabled)
-
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Fold simulation")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Slider(value: $model.foldAmount, in: 0...1)
-                .help("Simulated screen fold angle")
-
-            HStack {
-                Text("Flat")
-                Spacer()
-                Text("Folded")
+            Button {
+                model.isEnabled.toggle()
+            } label: {
+                Label(
+                    model.isEnabled
+                        ? "Disable Effect"
+                        : "Enable Effect",
+                    systemImage: model.isEnabled
+                        ? "display"
+                        : "display.slash"
+                )
             }
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-        }
-        .padding(.vertical, 4)
+            .disabled(model.isPreparing || !model.captureAvailable)
 
-        Text(model.statusMessage)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-
-        if !model.captureAvailable {
             Divider()
-            Button("Allow Screen Recording…") {
-                model.requestScreenRecording()
+
+            // MARK: - Phosphor
+
+            Toggle(
+                "Retro Phosphor Green",
+                isOn: $model.phosphorGreen
+            )
+            .disabled(model.isPreparing)
+
+            // MARK: - Fold
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Fold simulation")
+                    .font(.caption)
+
+                Slider(
+                    value: $model.foldAmount,
+                    in: 0...1
+                )
+
+                HStack {
+                    Text("Flat")
+                    Spacer()
+                    Text("Folded")
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 4)
+            .disabled(model.isPreparing)
+
+            // MARK: - Permission
+
+            if !model.captureAvailable {
+                Divider()
+
+                Button {
+                    model.requestScreenRecording()
+                } label: {
+                    Label(
+                        "Allow Screen Recording…",
+                        systemImage: "record.circle"
+                    )
+                }
+
+                Text(
+                    "Screen Recording permission is required for the effect."
+                )
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Divider()
+
+            // MARK: - Quit
+
+            Button {
+                NSApplication.shared.terminate(nil)
+            } label: {
+                Label(
+                    "Quit RetroPhosphor",
+                    systemImage: "power"
+                )
             }
         }
-
-        Divider()
-
-        Button("Quit") {
-            NSApplication.shared.terminate(nil)
-        }
+        .padding(8)
+        .frame(width: 240)
     }
 }
