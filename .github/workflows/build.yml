@@ -2,6 +2,7 @@ name: Build macOS app
 
 on:
   push:
+
   workflow_dispatch:
 
 jobs:
@@ -9,7 +10,8 @@ jobs:
     runs-on: macos-14
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Show Swift version
         run: swift --version
@@ -18,50 +20,97 @@ jobs:
         run: swift build -c release
 
       - name: Create app bundle
+        shell: bash
         run: |
+          set -e
+
           APP_DIR="artifacts/RetroPhosphor.app"
 
+          rm -rf artifacts
           mkdir -p "$APP_DIR/Contents/MacOS"
           mkdir -p "$APP_DIR/Contents/Resources"
 
-          cp .build/release/RetroPhosphor "$APP_DIR/Contents/MacOS/RetroPhosphor"
+          cp \
+            ".build/release/RetroPhosphor" \
+            "$APP_DIR/Contents/MacOS/RetroPhosphor"
 
           cat > "$APP_DIR/Contents/Info.plist" <<'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
+
               <key>CFBundleDevelopmentRegion</key>
               <string>en</string>
+
               <key>CFBundleExecutable</key>
               <string>RetroPhosphor</string>
+
               <key>CFBundleIdentifier</key>
               <string>com.retro-phosphor.app</string>
+
               <key>CFBundleInfoDictionaryVersion</key>
               <string>6.0</string>
+
               <key>CFBundleName</key>
               <string>RetroPhosphor</string>
+
+              <key>CFBundleDisplayName</key>
+              <string>RetroPhosphor</string>
+
               <key>CFBundlePackageType</key>
               <string>APPL</string>
+
               <key>CFBundleShortVersionString</key>
               <string>1.0.0</string>
+
               <key>CFBundleVersion</key>
               <string>1</string>
+
               <key>LSMinimumSystemVersion</key>
               <string>13.0</string>
+
+              <key>LSUIElement</key>
+              <true/>
+
+              <key>NSScreenCaptureUsageDescription</key>
+              <string>RetroPhosphor needs Screen Recording access to create its live display effect.</string>
+
           </dict>
           </plist>
           PLIST
 
-          chmod +x "$APP_DIR/Contents/MacOS/RetroPhosphor"
+          chmod +x \
+            "$APP_DIR/Contents/MacOS/RetroPhosphor"
+
+          # Basic bundle validation.
+          test -x \
+            "$APP_DIR/Contents/MacOS/RetroPhosphor"
+
+          test -f \
+            "$APP_DIR/Contents/Info.plist"
+
+          plutil -lint \
+            "$APP_DIR/Contents/Info.plist"
 
       - name: Package
+        shell: bash
         run: |
+          set -e
+
           cd artifacts
-          zip -r RetroPhosphor-macos.zip RetroPhosphor.app
+
+          ditto \
+            -c \
+            -k \
+            --sequesterRsrc \
+            --keepParent \
+            RetroPhosphor.app \
+            RetroPhosphor-macos.zip
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: RetroPhosphor-macos
           path: artifacts/RetroPhosphor-macos.zip
+          if-no-files-found: error
