@@ -1,6 +1,5 @@
 import AppKit
 import Combine
-import ScreenCaptureKit
 
 @MainActor
 final class AppModel: ObservableObject {
@@ -31,10 +30,10 @@ final class AppModel: ObservableObject {
 
     @Published var foldAmount: Double = 0 {
         didSet {
-            let clamped = min(max(foldAmount, 0), 1)
+            let clampedValue = min(max(foldAmount, 0), 1)
 
-            if foldAmount != clamped {
-                foldAmount = clamped
+            if foldAmount != clampedValue {
+                foldAmount = clampedValue
                 return
             }
 
@@ -48,13 +47,12 @@ final class AppModel: ObservableObject {
     }
 
     @Published private(set) var captureAvailable = false
-
     @Published private(set) var isPreparing = true
 
-    // MARK: - Private State
+    // MARK: - Private
 
-    private var overlay: ScreenOverlayController?
     private let capture = ScreenCaptureController()
+    private var overlay: ScreenOverlayController?
 
     private enum Keys {
         static let enabled = "RetroPhosphor.enabled"
@@ -65,12 +63,22 @@ final class AppModel: ObservableObject {
     // MARK: - Initialization
 
     init() {
+        isEnabled = UserDefaults.standard.bool(
+            forKey: Keys.enabled
+        )
+
         phosphorGreen = UserDefaults.standard.bool(
             forKey: Keys.phosphorGreen
         )
 
-        foldAmount = UserDefaults.standard.double(
-            forKey: Keys.foldAmount
+        foldAmount = min(
+            max(
+                UserDefaults.standard.double(
+                    forKey: Keys.foldAmount
+                ),
+                0
+            ),
+            1
         )
 
         Task { @MainActor in
@@ -83,7 +91,8 @@ final class AppModel: ObservableObject {
     private func prepare() async {
         isPreparing = true
 
-        captureAvailable = await capture.hasScreenCapturePermission()
+        captureAvailable =
+            await capture.hasScreenCapturePermission()
 
         let newOverlay = ScreenOverlayController(
             capture: capture
@@ -101,8 +110,8 @@ final class AppModel: ObservableObject {
 
         isPreparing = false
 
-        // If the user had the effect enabled before quitting,
-        // actually start it after the overlay has been created.
+        // Restore the previous enabled state once
+        // the overlay and permission state are ready.
         if isEnabled && captureAvailable {
             updateOverlay()
         }
@@ -112,14 +121,11 @@ final class AppModel: ObservableObject {
 
     func requestScreenRecording() {
         Task { @MainActor in
-
             await capture.requestContent()
 
             captureAvailable =
                 await capture.hasScreenCapturePermission()
 
-            // If permission was granted and the user had already
-            // enabled the effect, start it automatically.
             if captureAvailable && isEnabled {
                 updateOverlay()
             }
@@ -140,13 +146,11 @@ final class AppModel: ObservableObject {
     // MARK: - Overlay
 
     private func updateOverlay() {
-
         guard let overlay else {
             return
         }
 
         if isEnabled {
-
             guard captureAvailable else {
                 return
             }
@@ -154,20 +158,8 @@ final class AppModel: ObservableObject {
             Task { @MainActor in
                 await overlay.start()
             }
-
         } else {
-
             overlay.stop()
-        }
-    }
-
-    // MARK: - Disable
-
-    func disable() {
-        if isEnabled {
-            isEnabled = false
-        } else {
-            overlay?.stop()
         }
     }
 }
