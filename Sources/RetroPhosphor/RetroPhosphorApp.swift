@@ -8,8 +8,11 @@ struct RetroPhosphorApp: App {
         MenuBarExtra {
             MenuContent(model: model)
         } label: {
-            Image(systemName: model.isEnabled ? "display" : "display.slash")
-                .accessibilityLabel("RetroPhosphor")
+            Image(
+                systemName: model.isEnabled
+                    ? "display"
+                    : "display.slash"
+            )
         }
         .menuBarExtraStyle(.menu)
     }
