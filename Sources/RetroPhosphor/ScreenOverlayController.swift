@@ -7,14 +7,11 @@ final class ScreenOverlayController {
     private let capture: ScreenCaptureController
 
     private var window: NSWindow?
-    private var hosting:
-        NSHostingController<OverlayView>?
+    private var hosting: NSHostingController<OverlayView>?
 
-    private var task:
-        Task<Void, Never>?
+    private var task: Task<Void, Never>?
 
-    private let viewModel =
-        OverlayViewModel()
+    private let viewModel = OverlayViewModel()
 
     private var phosphor = false
     private var fold: Double = 0
@@ -25,19 +22,12 @@ final class ScreenOverlayController {
 
     func setPhosphorGreen(_ enabled: Bool) {
         phosphor = enabled
-
-        viewModel.phosphorGreen =
-            enabled
+        viewModel.phosphorGreen = enabled
     }
 
     func setFoldAmount(_ value: Double) {
-        fold =
-            VisualEffectMath.clampedFoldAmount(
-                value
-            )
-
-        viewModel.foldAmount =
-            fold
+        fold = VisualEffectMath.clampedFoldAmount(value)
+        viewModel.foldAmount = fold
     }
 
     func start() async {
@@ -45,30 +35,23 @@ final class ScreenOverlayController {
             return
         }
 
-        guard let screen =
-            NSScreen.main ?? NSScreen.screens.first
-        else {
+        guard let screen = NSScreen.main ?? NSScreen.screens.first else {
             return
         }
 
-        let screenFrame =
-            screen.frame
+        let screenFrame = screen.frame
 
         viewModel.image = nil
-        viewModel.phosphorGreen =
-            phosphor
-        viewModel.foldAmount =
-            fold
+        viewModel.phosphorGreen = phosphor
+        viewModel.foldAmount = fold
 
-        let overlayView =
-            OverlayView(
-                viewModel: viewModel
-            )
+        let overlayView = OverlayView(
+            viewModel: viewModel
+        )
 
-        let hostingController =
-            NSHostingController(
-                rootView: overlayView
-            )
+        let hostingController = NSHostingController(
+            rootView: overlayView
+        )
 
         let overlayWindow = NSWindow(
             contentRect: screenFrame,
@@ -77,9 +60,7 @@ final class ScreenOverlayController {
             defer: false
         )
 
-        overlayWindow.contentViewController =
-            hostingController
-
+        overlayWindow.contentViewController = hostingController
         overlayWindow.isOpaque = false
         overlayWindow.backgroundColor = .clear
         overlayWindow.level = .screenSaver
@@ -101,63 +82,51 @@ final class ScreenOverlayController {
             overlayWindow.windowNumber
         )
 
-        let frames =
-            capture.frames()
+        let frames = capture.frames()
 
-        task =
-            Task { @MainActor [weak self] in
+        task = Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
 
-                guard let self else {
-                    return
-                }
+            do {
+                try await self.capture.start(
+                    matchingScreenFrame: screenFrame,
+                    excludingWindowID: windowID
+                )
 
-                do {
-                    try await self.capture.start(
-                        matchingScreenFrame:
-                            screenFrame,
-                        excludingWindowID:
-                            windowID
-                    )
+                let renderer = PhosphorRenderer()
 
-                    let renderer =
-                        PhosphorRenderer()
-
-                    for await image in frames {
-
-                        if Task.isCancelled {
-                            break
-                        }
-
-                        guard
-                            self.window != nil
-                        else {
-                            break
-                        }
-
-                        let phosphorGreen =
-                            self.phosphor
-
-                        let renderedImage =
-                            renderer.render(
-                                image: image,
-                                phosphorGreen:
-                                    phosphorGreen
-                            )
-
-                        guard
-                            let renderedImage
-                        else {
-                            continue
-                        }
-
-                        self.viewModel.image =
-                            renderedImage
+                for await image in frames {
+                    if Task.isCancelled {
+                        break
                     }
 
-                } catch {
-                    self.stop()
+                    guard self.window != nil else {
+                        break
+                    }
+
+                    let phosphorGreen = self.phosphor
+
+                    let renderedImage = await Task.detached(
+                        priority: .userInitiated
+                    ) {
+                        renderer.render(
+                            image: image,
+                            phosphorGreen: phosphorGreen
+                        )
+                    }.value
+
+                    guard let renderedImage else {
+                        continue
+                    }
+
+                    self.viewModel.image = renderedImage
                 }
+            } catch {
+                self.stop()
             }
+        }
     }
 
     func stop() {
@@ -180,79 +149,61 @@ final class ScreenOverlayController {
 // MARK: - Overlay View Model
 
 @MainActor
-private final class OverlayViewModel:
-    ObservableObject {
+private final class OverlayViewModel: ObservableObject {
 
-    @Published var image:
-        CGImage?
+    @Published var image: CGImage?
 
-    @Published var phosphorGreen:
-        Bool = false
+    @Published var phosphorGreen: Bool = false
 
-    @Published var foldAmount:
-        Double = 0
+    @Published var foldAmount: Double = 0
 }
 
 // MARK: - Overlay View
 
-private struct OverlayView:
-    View {
+private struct OverlayView: View {
 
-    @ObservedObject
-    var viewModel:
-        OverlayViewModel
+    @ObservedObject var viewModel: OverlayViewModel
 
     private var foldRotation: Double {
         VisualEffectMath.foldRotation(
-            for:
-                viewModel.foldAmount
+            for: viewModel.foldAmount
         )
     }
 
     private var foldPerspective: Double {
         VisualEffectMath.foldPerspective(
-            for:
-                viewModel.foldAmount
+            for: viewModel.foldAmount
         )
     }
 
     private var shadowOpacity: Double {
         VisualEffectMath.foldShadowOpacity(
-            for:
-                viewModel.foldAmount
+            for: viewModel.foldAmount
         )
     }
 
     private var shadowRadius: Double {
         VisualEffectMath.foldShadowRadius(
-            for:
-                viewModel.foldAmount
+            for: viewModel.foldAmount
         )
     }
 
     var body: some View {
-
         GeometryReader { proxy in
 
-            let width =
-                proxy.size.width
+            let width = proxy.size.width
+            let height = proxy.size.height
 
-            let height =
-                proxy.size.height
+            let hingePosition = height * 0.82
 
-            let hingePosition =
-                height * 0.82
-
-            let hingeHeight =
-                max(
-                    2,
-                    height * 0.035
-                )
+            let hingeHeight = max(
+                2,
+                height * 0.035
+            )
 
             ZStack {
 
-                if let image =
-                    viewModel.image {
+                if let image = viewModel.image {
 
                     // MARK: Main upper section
 
@@ -269,45 +220,36 @@ private struct OverlayView:
                     )
                     .clipped()
                     .overlay {
-
                         if viewModel.phosphorGreen {
                             Scanlines()
                         }
                     }
                     .mask {
-
                         Rectangle()
                             .frame(
                                 width: width,
-                                height:
-                                    hingePosition
+                                height: hingePosition
                             )
                             .frame(
-                                maxHeight:
-                                    .infinity,
+                                maxHeight: .infinity,
                                 alignment: .top
                             )
                     }
                     .rotation3DEffect(
-                        .degrees(
-                            foldRotation
-                        ),
+                        .degrees(foldRotation),
                         axis: (
                             x: 1,
                             y: 0,
                             z: 0
                         ),
                         anchor: .bottom,
-                        perspective:
-                            foldPerspective
+                        perspective: foldPerspective
                     )
                     .shadow(
-                        color:
-                            .black.opacity(
-                                shadowOpacity
-                            ),
-                        radius:
-                            shadowRadius
+                        color: .black.opacity(
+                            shadowOpacity
+                        ),
+                        radius: shadowRadius
                     )
 
                     // MARK: Fixed lower section
@@ -325,17 +267,13 @@ private struct OverlayView:
                     )
                     .clipped()
                     .mask {
-
                         Rectangle()
                             .frame(
                                 width: width,
-                                height:
-                                    height -
-                                    hingePosition
+                                height: height - hingePosition
                             )
                             .frame(
-                                maxHeight:
-                                    .infinity,
+                                maxHeight: .infinity,
                                 alignment: .bottom
                             )
                     }
@@ -357,10 +295,8 @@ private struct OverlayView:
                             height: hingeHeight
                         )
                         .position(
-                            x:
-                                width / 2,
-                            y:
-                                hingePosition
+                            x: width / 2,
+                            y: hingePosition
                         )
                         .blur(
                             radius:
@@ -386,8 +322,7 @@ private struct OverlayView:
                             height: 1
                         )
                         .position(
-                            x:
-                                width / 2,
+                            x: width / 2,
                             y:
                                 hingePosition -
                                 (
@@ -404,46 +339,32 @@ private struct OverlayView:
 
 // MARK: - Scanlines
 
-private struct Scanlines:
-    View {
+private struct Scanlines: View {
 
     var body: some View {
-
         GeometryReader { _ in
 
             Canvas { context, size in
 
-                let spacing:
-                    CGFloat = 3
+                let spacing: CGFloat = 3
+                let lineHeight: CGFloat = 1
 
-                let lineHeight:
-                    CGFloat = 1
-
-                var y:
-                    CGFloat = 0
+                var y: CGFloat = 0
 
                 while y < size.height {
 
-                    let rectangle =
-                        CGRect(
-                            x: 0,
-                            y: y,
-                            width:
-                                size.width,
-                            height:
-                                lineHeight
-                        )
+                    let rectangle = CGRect(
+                        x: 0,
+                        y: y,
+                        width: size.width,
+                        height: lineHeight
+                    )
 
                     context.fill(
-                        Path(
-                            rectangle
-                        ),
-                        with:
-                            .color(
-                                .black.opacity(
-                                    0.16
-                                )
-                            )
+                        Path(rectangle),
+                        with: .color(
+                            .black.opacity(0.16)
+                        )
                     )
 
                     y += spacing
