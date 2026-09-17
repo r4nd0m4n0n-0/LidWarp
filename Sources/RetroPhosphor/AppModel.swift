@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import ScreenCaptureKit
 
 @MainActor
 final class AppModel: ObservableObject {
@@ -14,12 +15,6 @@ final class AppModel: ObservableObject {
             )
 
             updateOverlay()
-
-            if !isEnabled {
-                stopAutoFold()
-            } else if autoFold {
-                startAutoFold()
-            }
         }
     }
 
@@ -36,44 +31,8 @@ final class AppModel: ObservableObject {
         }
     }
 
-    @Published var crtGlow = false {
-        didSet {
-            overlay?.setCRTGlow(
-                crtGlow
-            )
-        }
-    }
-
-    @Published var effectIntensity: Double = 1.0 {
-        didSet {
-            let clampedValue = min(
-                max(effectIntensity, 0),
-                1
-            )
-
-            if effectIntensity != clampedValue {
-                effectIntensity = clampedValue
-                return
-            }
-
-            overlay?.setEffectIntensity(
-                effectIntensity
-            )
-        }
-    }
-
     @Published var foldAmount: Double = 0 {
         didSet {
-            let clampedValue = min(
-                max(foldAmount, 0),
-                1
-            )
-
-            if foldAmount != clampedValue {
-                foldAmount = clampedValue
-                return
-            }
-
             UserDefaults.standard.set(
                 foldAmount,
                 forKey: Keys.foldAmount
@@ -85,38 +44,17 @@ final class AppModel: ObservableObject {
         }
     }
 
-    @Published var autoFold = false {
-        didSet {
-            if autoFold {
-                startAutoFold()
-            } else {
-                stopAutoFold()
-            }
-        }
-    }
+    @Published var captureAvailable = false
 
-    @Published var autoFoldSpeed: Double = 0.5 {
-        didSet {
-            let clampedValue = min(
-                max(autoFoldSpeed, 0.1),
-                1.0
-            )
+    @Published private(set) var licenseManager =
+        LicenseManager()
 
-            if autoFoldSpeed != clampedValue {
-                autoFoldSpeed = clampedValue
-            }
-        }
-    }
+    // MARK: - Private Properties
 
-    @Published private(set) var captureAvailable = false
-    @Published private(set) var isPreparing = true
-
-    // MARK: - Private
-
-    private let capture = ScreenCaptureController()
     private var overlay: ScreenOverlayController?
 
-    private var autoFoldTask: Task<Void, Never>?
+    private let capture =
+        ScreenCaptureController()
 
     private enum Keys {
         static let enabled =
@@ -132,171 +70,121 @@ final class AppModel: ObservableObject {
     // MARK: - Initialization
 
     init() {
-        isEnabled = UserDefaults.standard.bool(
-            forKey: Keys.enabled
-        )
+        isEnabled =
+            UserDefaults.standard.bool(
+                forKey: Keys.enabled
+            )
 
-        phosphorGreen = UserDefaults.standard.bool(
-            forKey: Keys.phosphorGreen
-        )
+        phosphorGreen =
+            UserDefaults.standard.bool(
+                forKey: Keys.phosphorGreen
+            )
 
-        foldAmount = min(
-            max(
-                UserDefaults.standard.double(
-                    forKey: Keys.foldAmount
-                ),
-                0
-            ),
-            1
-        )
+        foldAmount =
+            UserDefaults.standard.double(
+                forKey: Keys.foldAmount
+            )
 
-        Task { @MainActor in
+        // Never restore the visual effect before
+        // confirming the license.
+        isEnabled = false
+
+        Task {
             await prepare()
         }
     }
 
     // MARK: - Preparation
 
-    private func prepare() async {
-        isPreparing = true
-
+    func prepare() async {
         captureAvailable =
             await capture.hasScreenCapturePermission()
 
-        let newOverlay = ScreenOverlayController(
-            capture: capture
-        )
+        overlay =
+            ScreenOverlayController(
+                capture: capture
+            )
 
-        overlay = newOverlay
-
-        newOverlay.setPhosphorGreen(
+        overlay?.setPhosphorGreen(
             phosphorGreen
         )
 
-        newOverlay.setCRTGlow(
-            crtGlow
-        )
-
-        newOverlay.setEffectIntensity(
-            effectIntensity
-        )
-
-        newOverlay.setFoldAmount(
+        overlay?.setFoldAmount(
             foldAmount
         )
 
-        isPreparing = false
+        // Check the stored license when the app starts.
+        await licenseManager.validate()
 
-        if isEnabled && captureAvailable {
-            updateOverlay()
+        // Only restore the effect if the license
+        // is valid.
+        if licenseManager.isLicensed {
+            let savedEnabled =
+                UserDefaults.standard.bool(
+                    forKey: Keys.enabled
+                )
+
+            if savedEnabled {
+                isEnabled = true
+            }
         }
     }
 
-    // MARK: - Screen Recording Permission
+    // MARK: - License
+
+    func activateLicense(_ key: String) async {
+        await licenseManager.activate(
+            key: key
+        )
+
+        if licenseManager.isLicensed {
+            let savedEnabled =
+                UserDefaults.standard.bool(
+                    forKey: Keys.enabled
+                )
+
+            if savedEnabled {
+                isEnabled = true
+            }
+        } else {
+            isEnabled = false
+        }
+    }
+
+    func validateLicense() async {
+        await licenseManager.validate()
+
+        if !licenseManager.isLicensed {
+            isEnabled = false
+        }
+    }
+
+    func deactivateLicense() async {
+        await licenseManager.deactivate()
+
+        isEnabled = false
+    }
+
+    // MARK: - Effect Control
+
+    func toggleEffect() {
+        guard licenseManager.isLicensed else {
+            isEnabled = false
+            return
+        }
+
+        isEnabled.toggle()
+    }
+
+    // MARK: - Screen Recording
 
     func requestScreenRecording() {
-        Task { @MainActor in
+        Task {
             await capture.requestContent()
 
             captureAvailable =
                 await capture.hasScreenCapturePermission()
-
-            if captureAvailable && isEnabled {
-                updateOverlay()
-            }
         }
-    }
-
-    func refreshPermissionState() {
-        Task { @MainActor in
-            captureAvailable =
-                await capture.hasScreenCapturePermission()
-
-            if captureAvailable && isEnabled {
-                updateOverlay()
-            }
-        }
-    }
-
-    // MARK: - Reset
-
-    func resetFold() {
-        autoFold = false
-        foldAmount = 0
-    }
-
-    func resetVisualSettings() {
-        autoFold = false
-        foldAmount = 0
-        autoFoldSpeed = 0.5
-        effectIntensity = 1.0
-        phosphorGreen = false
-        crtGlow = false
-    }
-
-    // MARK: - Auto Fold
-
-    private func startAutoFold() {
-        guard autoFoldTask == nil else {
-            return
-        }
-
-        guard isEnabled else {
-            return
-        }
-
-        autoFoldTask = Task { @MainActor [weak self] in
-            guard let self else {
-                return
-            }
-
-            var direction = 1.0
-
-            while !Task.isCancelled {
-
-                if !self.autoFold ||
-                    !self.isEnabled {
-                    break
-                }
-
-                let speed =
-                    0.002 +
-                    (
-                        0.018 *
-                        self.autoFoldSpeed
-                    )
-
-                var nextValue =
-                    self.foldAmount +
-                    (
-                        speed *
-                        direction
-                    )
-
-                if nextValue >= 1.0 {
-                    nextValue = 1.0
-                    direction = -1.0
-                }
-
-                if nextValue <= 0.0 {
-                    nextValue = 0.0
-                    direction = 1.0
-                }
-
-                self.foldAmount = nextValue
-
-                try? await Task.sleep(
-                    nanoseconds: 30_000_000
-                )
-            }
-
-            self.autoFoldTask = nil
-        }
-    }
-
-    private func stopAutoFold() {
-        autoFoldTask?.cancel()
-        autoFoldTask = nil
     }
 
     // MARK: - Overlay
@@ -306,22 +194,23 @@ final class AppModel: ObservableObject {
             return
         }
 
-        if isEnabled {
-            guard captureAvailable else {
-                return
+        // License is required before the overlay
+        // can actually run.
+        guard licenseManager.isLicensed else {
+            if isEnabled {
+                isEnabled = false
             }
 
-            Task { @MainActor in
+            overlay.stop()
+            return
+        }
+
+        if isEnabled {
+            Task {
                 await overlay.start()
             }
         } else {
             overlay.stop()
         }
-    }
-
-    // MARK: - Deinitialization
-
-    deinit {
-        autoFoldTask?.cancel()
     }
 }
