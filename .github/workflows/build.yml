@@ -11,16 +11,8 @@ jobs:
     runs-on: macos-latest
 
     steps:
-      # --------------------------------------------------
-      # Checkout
-      # --------------------------------------------------
-
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      # --------------------------------------------------
-      # Environment
-      # --------------------------------------------------
 
       - name: Show environment
         run: |
@@ -35,35 +27,19 @@ jobs:
           echo "Xcode:"
           xcodebuild -version
 
-      # --------------------------------------------------
-      # Resolve package
-      # --------------------------------------------------
-
       - name: Resolve Swift package
         run: |
           swift package resolve
 
-      # --------------------------------------------------
-      # Debug build
-      # --------------------------------------------------
-
       - name: Build
         run: |
           swift build -v
-
-      # --------------------------------------------------
-      # Tests
-      # --------------------------------------------------
 
       - name: Run tests
         run: |
           mkdir -p build/test-output
 
           swift test -v 2>&1 | tee build/test-output/swift-test.txt
-
-      # --------------------------------------------------
-      # Test information
-      # --------------------------------------------------
 
       - name: Capture test information
         if: always()
@@ -72,6 +48,7 @@ jobs:
             echo "========================================"
             echo "LidWarp Swift Package"
             echo "========================================"
+
             swift package describe
 
             echo ""
@@ -83,10 +60,6 @@ jobs:
               cat build/test-output/swift-test.txt
             fi
           } > build/test-output/report.txt
-
-      # --------------------------------------------------
-      # Inspect project
-      # --------------------------------------------------
 
       - name: Inspect project
         if: always()
@@ -115,10 +88,6 @@ jobs:
 
           cat build/diagnostics/swift-files.txt
 
-      # --------------------------------------------------
-      # Inspect Swift build
-      # --------------------------------------------------
-
       - name: Inspect Swift build
         if: always()
         run: |
@@ -130,10 +99,6 @@ jobs:
             > build/diagnostics/build-files.txt
 
           cat build/diagnostics/build-files.txt
-
-      # --------------------------------------------------
-      # Collect render previews
-      # --------------------------------------------------
 
       - name: Collect render previews
         if: always()
@@ -163,10 +128,6 @@ jobs:
               -print
           fi
 
-      # --------------------------------------------------
-      # Render preview report
-      # --------------------------------------------------
-
       - name: Create render preview report
         if: always()
         run: |
@@ -191,17 +152,9 @@ jobs:
             fi
           } > build/render-preview/report.txt
 
-      # --------------------------------------------------
-      # Release build
-      # --------------------------------------------------
-
       - name: Build release
         run: |
           swift build -c release -v
-
-      # --------------------------------------------------
-      # Locate release executable
-      # --------------------------------------------------
 
       - name: Locate release executable
         run: |
@@ -231,11 +184,7 @@ jobs:
 
           chmod +x build/RetroPhosphor
 
-      # --------------------------------------------------
-      # Create LidWarp application bundle
-      # --------------------------------------------------
-
-      - name: Create LidWarp.app
+      - name: Create LidWarp application bundle
         run: |
           APP="build/LidWarp.app"
 
@@ -247,57 +196,58 @@ jobs:
             build/RetroPhosphor \
             "$APP/Contents/MacOS/RetroPhosphor"
 
-          cat > "$APP/Contents/Info.plist" <<'PLIST'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-"http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleDisplayName</key>
-    <string>LidWarp</string>
+          PLIST="$APP/Contents/Info.plist"
 
-    <key>CFBundleExecutable</key>
-    <string>RetroPhosphor</string>
+          /usr/libexec/PlistBuddy \
+            -c "Add :CFBundleDisplayName string LidWarp" \
+            "$PLIST"
 
-    <key>CFBundleIdentifier</key>
-    <string>com.lidwarp.app</string>
+          /usr/libexec/PlistBuddy \
+            -c "Add :CFBundleExecutable string RetroPhosphor" \
+            "$PLIST"
 
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
+          /usr/libexec/PlistBuddy \
+            -c "Add :CFBundleIdentifier string com.lidwarp.app" \
+            "$PLIST"
 
-    <key>CFBundleName</key>
-    <string>LidWarp</string>
+          /usr/libexec/PlistBuddy \
+            -c "Add :CFBundleInfoDictionaryVersion string 6.0" \
+            "$PLIST"
 
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
+          /usr/libexec/PlistBuddy \
+            -c "Add :CFBundleName string LidWarp" \
+            "$PLIST"
 
-    <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
+          /usr/libexec/PlistBuddy \
+            -c "Add :CFBundlePackageType string APPL" \
+            "$PLIST"
 
-    <key>CFBundleVersion</key>
-    <string>1</string>
+          /usr/libexec/PlistBuddy \
+            -c "Add :CFBundleShortVersionString string 1.0.0" \
+            "$PLIST"
 
-    <key>LSMinimumSystemVersion</key>
-    <string>13.0</string>
+          /usr/libexec/PlistBuddy \
+            -c "Add :CFBundleVersion string 1" \
+            "$PLIST"
 
-    <key>LSUIElement</key>
-    <true/>
+          /usr/libexec/PlistBuddy \
+            -c "Add :LSMinimumSystemVersion string 13.0" \
+            "$PLIST"
 
-    <key>NSHighResolutionCapable</key>
-    <true/>
+          /usr/libexec/PlistBuddy \
+            -c "Add :LSUIElement bool true" \
+            "$PLIST"
 
-    <key>NSScreenCaptureUsageDescription</key>
-    <string>LidWarp needs Screen Recording access to capture the display and apply the visual effect.</string>
-</dict>
-</plist>
-PLIST
+          /usr/libexec/PlistBuddy \
+            -c "Add :NSHighResolutionCapable bool true" \
+            "$PLIST"
 
-          echo "Application bundle:"
+          /usr/libexec/PlistBuddy \
+            -c "Add :NSScreenCaptureUsageDescription string LidWarp needs Screen Recording access to capture the display and apply the visual effect." \
+            "$PLIST"
+
+          echo "Application bundle created:"
           find "$APP" -maxdepth 3 -print
-
-      # --------------------------------------------------
-      # Validate Info.plist
-      # --------------------------------------------------
 
       - name: Validate Info.plist
         run: |
@@ -312,10 +262,6 @@ PLIST
             -p \
             build/LidWarp.app/Contents/Info.plist
 
-      # --------------------------------------------------
-      # Ad-hoc code signing
-      # --------------------------------------------------
-
       - name: Code sign application
         run: |
           codesign \
@@ -323,10 +269,6 @@ PLIST
             --deep \
             --sign - \
             build/LidWarp.app
-
-      # --------------------------------------------------
-      # Verify signature
-      # --------------------------------------------------
 
       - name: Verify code signature
         run: |
@@ -336,10 +278,6 @@ PLIST
             --strict \
             --verbose=2 \
             build/LidWarp.app
-
-      # --------------------------------------------------
-      # Verify application executable
-      # --------------------------------------------------
 
       - name: Verify application executable
         run: |
@@ -351,10 +289,6 @@ PLIST
 
           echo ""
           echo "LidWarp executable verified."
-
-      # --------------------------------------------------
-      # Create release ZIP
-      # --------------------------------------------------
 
       - name: Create release ZIP
         run: |
@@ -374,10 +308,6 @@ PLIST
           ls -lh \
             build/LidWarp-macOS.zip
 
-      # --------------------------------------------------
-      # Create release manifest
-      # --------------------------------------------------
-
       - name: Create release manifest
         run: |
           APP="build/LidWarp.app"
@@ -394,33 +324,34 @@ PLIST
             echo "LidWarp.app"
             echo ""
             echo "Bundle ID:"
+
             /usr/libexec/PlistBuddy \
               -c "Print :CFBundleIdentifier" \
               "$APP/Contents/Info.plist"
 
             echo ""
             echo "Executable:"
+
             ls -lh \
               "$APP/Contents/MacOS/RetroPhosphor"
 
             echo ""
             echo "ZIP:"
+
             ls -lh \
               build/LidWarp-macOS.zip
 
             echo ""
             echo "Code Signature:"
+
             codesign \
               -dv \
               "$APP" \
               2>&1 || true
+
           } > build/RELEASE-MANIFEST.txt
 
           cat build/RELEASE-MANIFEST.txt
-
-      # --------------------------------------------------
-      # Upload final application
-      # --------------------------------------------------
 
       - name: Upload LidWarp macOS release
         uses: actions/upload-artifact@v4
@@ -432,10 +363,6 @@ PLIST
             build/RELEASE-MANIFEST.txt
           if-no-files-found: error
 
-      # --------------------------------------------------
-      # Upload render previews
-      # --------------------------------------------------
-
       - name: Upload render previews
         if: always()
         uses: actions/upload-artifact@v4
@@ -444,10 +371,6 @@ PLIST
           path: build/render-preview
           if-no-files-found: warn
 
-      # --------------------------------------------------
-      # Upload test report
-      # --------------------------------------------------
-
       - name: Upload test report
         if: always()
         uses: actions/upload-artifact@v4
@@ -455,10 +378,6 @@ PLIST
           name: LidWarp-test-report
           path: build/test-output
           if-no-files-found: warn
-
-      # --------------------------------------------------
-      # Upload diagnostics
-      # --------------------------------------------------
 
       - name: Upload build diagnostics
         if: always()
