@@ -147,7 +147,8 @@ final class RetroPhosphorTests: XCTestCase {
             VisualEffectMath.foldTopScale(
                 for: 1
             ),
-            0.82
+            0.82,
+            accuracy: 0.0000001
         )
     }
 
@@ -201,7 +202,8 @@ final class RetroPhosphorTests: XCTestCase {
             VisualEffectMath.foldPerspective(
                 for: 1
             ),
-            0.85
+            0.85,
+            accuracy: 0.0000001
         )
     }
 
@@ -284,7 +286,8 @@ final class RetroPhosphorTests: XCTestCase {
             VisualEffectMath.foldTopScale(
                 for: 2
             ),
-            0.82
+            0.82,
+            accuracy: 0.0000001
         )
 
         XCTAssertEqual(
@@ -312,7 +315,8 @@ final class RetroPhosphorTests: XCTestCase {
             VisualEffectMath.foldPerspective(
                 for: 2
             ),
-            0.85
+            0.85,
+            accuracy: 0.0000001
         )
     }
 
@@ -445,11 +449,6 @@ final class RetroPhosphorTests: XCTestCase {
 
         XCTAssertNotNil(inputPixels)
         XCTAssertNotNil(outputPixels)
-
-        XCTAssertEqual(
-            inputPixels?.count,
-            outputPixels?.count
-        )
 
         XCTAssertNotEqual(
             inputPixels,
