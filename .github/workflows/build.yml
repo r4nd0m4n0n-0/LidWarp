@@ -23,7 +23,6 @@ jobs:
           echo "MACOS"
           echo "========================================"
           sw_vers
-
           echo ""
           echo "========================================"
           echo "XCODE"
@@ -112,6 +111,77 @@ jobs:
           find .build -maxdepth 8 -type f -print | sort \
             | tee build/test-output/build-files.txt
 
+      - name: Collect rendered PNG previews
+        if: always()
+        run: |
+          mkdir -p build/render-preview
+
+          echo "========================================"
+          echo "SEARCHING FOR PNG RENDER PREVIEWS"
+          echo "========================================"
+
+          FOUND=0
+
+          while IFS= read -r file; do
+            if [ -f "$file" ]; then
+              echo "Found PNG:"
+              echo "$file"
+
+              cp "$file" \
+                "build/render-preview/$(basename "$file")"
+
+              FOUND=1
+            fi
+          done < <(
+            find . \
+              -type f \
+              -iname "*.png" \
+              ! -path "./.git/*" \
+              ! -path "./.build/*" \
+              ! -path "./build/render-preview/*" \
+              -print
+          )
+
+          if [ "$FOUND" -eq 0 ]; then
+            echo "No PNG preview was found."
+            echo "The test may have passed without generating a PNG artifact."
+          fi
+
+          echo ""
+          echo "========================================"
+          echo "COLLECTED PREVIEWS"
+          echo "========================================"
+
+          find build/render-preview \
+            -maxdepth 1 \
+            -type f \
+            -print \
+            | sort
+
+      - name: Create render preview report
+        if: always()
+        run: |
+          {
+            echo "RetroPhosphor Render Preview"
+            echo "============================"
+            echo ""
+            echo "Date:"
+            date
+            echo ""
+            echo "PNG files:"
+            find build/render-preview \
+              -maxdepth 1 \
+              -type f \
+              -print \
+              | sort
+            echo ""
+            echo "File details:"
+            find build/render-preview \
+              -maxdepth 1 \
+              -type f \
+              -exec file {} \;
+          } > build/render-preview/report.txt
+
       - name: Create release directory
         run: |
           mkdir -p build/RetroPhosphor
@@ -145,7 +215,6 @@ jobs:
           file "build/RetroPhosphor/RetroPhosphor"
 
           echo ""
-
           ls -lh "build/RetroPhosphor/RetroPhosphor"
 
       - name: Make executable runnable
@@ -252,7 +321,6 @@ jobs:
           ls -lah "build/RetroPhosphor"
 
           echo ""
-
           du -sh "build/RetroPhosphor/RetroPhosphor.app"
 
       - name: Create ZIP
@@ -316,6 +384,15 @@ jobs:
           name: RetroPhosphor-macOS
           path: build/RetroPhosphor/RetroPhosphor-macOS.zip
           if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload render preview
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: RetroPhosphor-render-preview
+          path: build/render-preview
+          if-no-files-found: warn
           retention-days: 14
 
       - name: Upload test report
