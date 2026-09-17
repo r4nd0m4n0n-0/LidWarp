@@ -170,6 +170,12 @@ private struct OverlayView: View {
         )
     }
 
+    private var foldTopScale: Double {
+        VisualEffectMath.foldTopScale(
+            for: viewModel.foldAmount
+        )
+    }
+
     private var foldPerspective: Double {
         VisualEffectMath.foldPerspective(
             for: viewModel.foldAmount
@@ -205,7 +211,7 @@ private struct OverlayView: View {
 
                 if let image = viewModel.image {
 
-                    // MARK: Main upper section
+                    // MARK: Folded upper section
 
                     Image(
                         decorative: image,
@@ -235,6 +241,11 @@ private struct OverlayView: View {
                                 alignment: .top
                             )
                     }
+                    .scaleEffect(
+                        x: 1,
+                        y: foldTopScale,
+                        anchor: .bottom
+                    )
                     .rotation3DEffect(
                         .degrees(foldRotation),
                         axis: (
@@ -278,7 +289,7 @@ private struct OverlayView: View {
                             )
                     }
 
-                    // MARK: Hinge
+                    // MARK: Hinge shadow
 
                     Rectangle()
                         .fill(
