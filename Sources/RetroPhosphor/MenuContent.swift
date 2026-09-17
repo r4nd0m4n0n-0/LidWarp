@@ -62,6 +62,23 @@ struct MenuContent: View {
                     "Auto Fold",
                     isOn: $model.autoFold
                 )
+
+                HStack {
+                    Text("Fold Speed")
+                        .font(.caption)
+
+                    Slider(
+                        value: $model.autoFoldSpeed,
+                        in: 0.1...1.0
+                    )
+                    .disabled(!model.autoFold)
+
+                    Text(
+                        "\(Int(model.autoFoldSpeed * 100))%"
+                    )
+                    .font(.caption2)
+                    .frame(width: 35)
+                }
             }
             .padding(.vertical, 4)
             .disabled(model.isPreparing)
