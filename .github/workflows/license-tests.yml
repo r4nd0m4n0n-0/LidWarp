@@ -1,0 +1,45 @@
+name: License Tests
+
+on:
+  push:
+    branches:
+      - main
+
+  pull_request:
+
+  workflow_dispatch:
+
+jobs:
+  license-tests:
+    name: License Server Integration Tests
+    runs-on: macos-26
+
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show Swift version
+        run: swift --version
+
+      - name: Resolve Swift package
+        run: swift package resolve
+
+      - name: Run license integration tests
+        run: |
+          set -e
+
+          mkdir -p build/license-test-output
+
+          swift test \
+            --filter LicenseServerIntegrationTests \
+            2>&1 | tee build/license-test-output/license-tests.txt
+
+      - name: Upload license test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: LidWarp-license-test-report
+          path: build/license-test-output/license-tests.txt
+          if-no-files-found: warn
