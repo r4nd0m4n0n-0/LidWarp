@@ -3,13 +3,92 @@ import SwiftUI
 struct MenuContent: View {
     @ObservedObject var model: AppModel
 
+    @State private var licenseKeyInput = ""
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
 
-            // MARK: - Main Control
+            // MARK: - License
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("License")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+
+                if model.licenseManager.isLicensed {
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+
+                        Text("License active")
+                            .font(.caption)
+                    }
+
+                    Button {
+                        Task {
+                            await model.deactivateLicense()
+                        }
+                    } label: {
+                        Label(
+                            "Deactivate License",
+                            systemImage: "rectangle.portrait.and.arrow.right"
+                        )
+                    }
+                    .disabled(
+                        model.licenseManager.isChecking
+                    )
+
+                } else {
+                    TextField(
+                        "Enter license key",
+                        text: $licenseKeyInput
+                    )
+                    .textFieldStyle(.roundedBorder)
+
+                    Button {
+                        let key = licenseKeyInput
+
+                        Task {
+                            await model.activateLicense(key)
+                        }
+                    } label: {
+                        if model.licenseManager.isChecking {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Label(
+                                "Activate License",
+                                systemImage: "key.fill"
+                            )
+                        }
+                    }
+                    .disabled(
+                        licenseKeyInput
+                            .trimmingCharacters(
+                                in: .whitespacesAndNewlines
+                            )
+                            .isEmpty ||
+                        model.licenseManager.isChecking
+                    )
+                }
+
+                Text(
+                    model.licenseManager.statusMessage
+                )
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(
+                    horizontal: false,
+                    vertical: true
+                )
+            }
+
+            Divider()
+
+            // MARK: - Main Effect
 
             Button {
-                model.isEnabled.toggle()
+                model.toggleEffect()
             } label: {
                 Label(
                     model.isEnabled
@@ -22,29 +101,33 @@ struct MenuContent: View {
             }
             .disabled(
                 model.isPreparing ||
-                !model.captureAvailable
+                !model.captureAvailable ||
+                !model.licenseManager.isLicensed
             )
 
             Divider()
 
-            // MARK: - CRT Appearance
+            // MARK: - Visual Settings
 
             Toggle(
                 "Retro Phosphor Green",
                 isOn: $model.phosphorGreen
             )
-            .disabled(model.isPreparing)
+            .disabled(
+                model.isPreparing ||
+                !model.licenseManager.isLicensed
+            )
 
             Toggle(
                 "CRT Glow",
                 isOn: $model.crtGlow
             )
-            .disabled(model.isPreparing)
-
-            // MARK: - Effect Intensity
+            .disabled(
+                model.isPreparing ||
+                !model.licenseManager.isLicensed
+            )
 
             VStack(alignment: .leading, spacing: 5) {
-
                 Text("Effect Intensity")
                     .font(.caption)
 
@@ -62,9 +145,12 @@ struct MenuContent: View {
                 }
             }
             .padding(.vertical, 4)
-            .disabled(model.isPreparing)
+            .disabled(
+                model.isPreparing ||
+                !model.licenseManager.isLicensed
+            )
 
-            // MARK: - Fold
+            // MARK: - Fold Simulation
 
             VStack(alignment: .leading, spacing: 5) {
 
@@ -75,7 +161,10 @@ struct MenuContent: View {
                     value: $model.foldAmount,
                     in: 0...1
                 )
-                .disabled(model.autoFold)
+                .disabled(
+                    model.autoFold ||
+                    !model.licenseManager.isLicensed
+                )
 
                 HStack {
                     Text("Flat")
@@ -100,7 +189,10 @@ struct MenuContent: View {
                         value: $model.autoFoldSpeed,
                         in: 0.1...1.0
                     )
-                    .disabled(!model.autoFold)
+                    .disabled(
+                        !model.autoFold ||
+                        !model.licenseManager.isLicensed
+                    )
 
                     Text(
                         "\(Int(model.autoFoldSpeed * 100))%"
@@ -110,11 +202,14 @@ struct MenuContent: View {
                 }
             }
             .padding(.vertical, 4)
-            .disabled(model.isPreparing)
+            .disabled(
+                model.isPreparing ||
+                !model.licenseManager.isLicensed
+            )
 
             Divider()
 
-            // MARK: - Reset
+            // MARK: - Reset Controls
 
             Button {
                 model.resetFold()
@@ -124,7 +219,10 @@ struct MenuContent: View {
                     systemImage: "arrow.counterclockwise"
                 )
             }
-            .disabled(model.isPreparing)
+            .disabled(
+                model.isPreparing ||
+                !model.licenseManager.isLicensed
+            )
 
             Button {
                 model.resetVisualSettings()
@@ -134,9 +232,12 @@ struct MenuContent: View {
                     systemImage: "arrow.counterclockwise.circle"
                 )
             }
-            .disabled(model.isPreparing)
+            .disabled(
+                model.isPreparing ||
+                !model.licenseManager.isLicensed
+            )
 
-            // MARK: - Permission
+            // MARK: - Screen Recording
 
             if !model.captureAvailable {
                 Divider()
