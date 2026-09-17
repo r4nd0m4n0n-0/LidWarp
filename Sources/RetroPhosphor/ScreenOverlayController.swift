@@ -174,8 +174,32 @@ private struct OverlayView: View {
         )
     }
 
-    private var foldScale: Double {
-        VisualEffectMath.foldVerticalScale(
+    private var foldTopScale: Double {
+        VisualEffectMath.foldTopScale(
+            for: foldAmount
+        )
+    }
+
+    private var foldBottomScale: Double {
+        VisualEffectMath.foldBottomScale(
+            for: foldAmount
+        )
+    }
+
+    private var foldPerspective: Double {
+        VisualEffectMath.foldPerspective(
+            for: foldAmount
+        )
+    }
+
+    private var foldShadowOpacity: Double {
+        VisualEffectMath.foldShadowOpacity(
+            for: foldAmount
+        )
+    }
+
+    private var foldShadowRadius: Double {
+        VisualEffectMath.foldShadowRadius(
             for: foldAmount
         )
     }
@@ -204,6 +228,12 @@ private struct OverlayView: View {
                         }
                     }
 
+                    .scaleEffect(
+                        x: 1,
+                        y: foldBottomScale,
+                        anchor: .bottom
+                    )
+
                     .rotation3DEffect(
                         .degrees(foldRotation),
                         axis: (
@@ -212,19 +242,20 @@ private struct OverlayView: View {
                             z: 0
                         ),
                         anchor: .bottom,
-                        perspective: 0.65
+                        perspective: foldPerspective
                     )
 
                     .scaleEffect(
                         x: 1,
-                        y: foldScale,
-                        anchor: .bottom
+                        y: foldTopScale,
+                        anchor: .top
                     )
 
                     .shadow(
-                        color: .black.opacity(0.25),
-                        radius:
-                            18 * foldAmount
+                        color: .black.opacity(
+                            foldShadowOpacity
+                        ),
+                        radius: foldShadowRadius
                     )
                 }
             }
