@@ -36,6 +36,12 @@ final class AppModel: ObservableObject {
         }
     }
 
+    @Published var crtGlow = false {
+        didSet {
+            overlay?.setCRTGlow(crtGlow)
+        }
+    }
+
     @Published var foldAmount: Double = 0 {
         didSet {
             let clampedValue = min(
@@ -145,6 +151,10 @@ final class AppModel: ObservableObject {
 
         newOverlay.setPhosphorGreen(
             phosphorGreen
+        )
+
+        newOverlay.setCRTGlow(
+            crtGlow
         )
 
         newOverlay.setFoldAmount(
