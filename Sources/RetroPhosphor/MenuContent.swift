@@ -41,6 +41,29 @@ struct MenuContent: View {
             )
             .disabled(model.isPreparing)
 
+            // MARK: - Effect Intensity
+
+            VStack(alignment: .leading, spacing: 5) {
+
+                Text("Effect Intensity")
+                    .font(.caption)
+
+                HStack {
+                    Slider(
+                        value: $model.effectIntensity,
+                        in: 0...1
+                    )
+
+                    Text(
+                        "\(Int(model.effectIntensity * 100))%"
+                    )
+                    .font(.caption2)
+                    .frame(width: 38)
+                }
+            }
+            .padding(.vertical, 4)
+            .disabled(model.isPreparing)
+
             // MARK: - Fold
 
             VStack(alignment: .leading, spacing: 5) {
