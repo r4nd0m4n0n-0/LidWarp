@@ -38,7 +38,27 @@ final class AppModel: ObservableObject {
 
     @Published var crtGlow = false {
         didSet {
-            overlay?.setCRTGlow(crtGlow)
+            overlay?.setCRTGlow(
+                crtGlow
+            )
+        }
+    }
+
+    @Published var effectIntensity: Double = 1.0 {
+        didSet {
+            let clampedValue = min(
+                max(effectIntensity, 0),
+                1
+            )
+
+            if effectIntensity != clampedValue {
+                effectIntensity = clampedValue
+                return
+            }
+
+            overlay?.setEffectIntensity(
+                effectIntensity
+            )
         }
     }
 
@@ -155,6 +175,10 @@ final class AppModel: ObservableObject {
 
         newOverlay.setCRTGlow(
             crtGlow
+        )
+
+        newOverlay.setEffectIntensity(
+            effectIntensity
         )
 
         newOverlay.setFoldAmount(
