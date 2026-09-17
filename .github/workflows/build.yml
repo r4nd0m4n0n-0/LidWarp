@@ -1,4 +1,4 @@
-name: Build macOS App
+name: Build LidWarp
 
 on:
   push:
@@ -44,7 +44,7 @@ jobs:
           swift package resolve
 
       # --------------------------------------------------
-      # Build
+      # Debug build
       # --------------------------------------------------
 
       - name: Build
@@ -70,7 +70,7 @@ jobs:
         run: |
           {
             echo "========================================"
-            echo "Swift Package"
+            echo "LidWarp Swift Package"
             echo "========================================"
             swift package describe
 
@@ -85,7 +85,7 @@ jobs:
           } > build/test-output/report.txt
 
       # --------------------------------------------------
-      # Inspect source
+      # Inspect project
       # --------------------------------------------------
 
       - name: Inspect project
@@ -116,7 +116,7 @@ jobs:
           cat build/diagnostics/swift-files.txt
 
       # --------------------------------------------------
-      # Inspect build directory
+      # Inspect Swift build
       # --------------------------------------------------
 
       - name: Inspect Swift build
@@ -132,7 +132,7 @@ jobs:
           cat build/diagnostics/build-files.txt
 
       # --------------------------------------------------
-      # Render preview artifacts
+      # Collect render previews
       # --------------------------------------------------
 
       - name: Collect render previews
@@ -171,8 +171,8 @@ jobs:
         if: always()
         run: |
           {
-            echo "RetroPhosphor Render Preview"
-            echo "============================"
+            echo "LidWarp Render Preview"
+            echo "======================"
             echo ""
 
             if find build/render-preview \
@@ -192,40 +192,52 @@ jobs:
           } > build/render-preview/report.txt
 
       # --------------------------------------------------
-      # Locate executable
+      # Release build
       # --------------------------------------------------
 
-      - name: Locate executable
+      - name: Build release
         run: |
-          echo "Searching for RetroPhosphor executable..."
+          swift build -c release -v
+
+      # --------------------------------------------------
+      # Locate release executable
+      # --------------------------------------------------
+
+      - name: Locate release executable
+        run: |
+          echo "Searching for release executable..."
 
           EXECUTABLE="$(
             find .build \
               -type f \
-              -name "RetroPhosphor" \
+              -path "*/release/RetroPhosphor" \
               -perm -111 \
               | head -n 1
           )"
 
           if [ -z "$EXECUTABLE" ]; then
-            echo "ERROR: RetroPhosphor executable not found."
+            echo "ERROR: Release RetroPhosphor executable not found."
             exit 1
           fi
 
           echo "Found:"
           echo "$EXECUTABLE"
 
-          cp "$EXECUTABLE" build/RetroPhosphor
+          mkdir -p build
+
+          cp \
+            "$EXECUTABLE" \
+            build/RetroPhosphor
 
           chmod +x build/RetroPhosphor
 
       # --------------------------------------------------
-      # Create application bundle
+      # Create LidWarp application bundle
       # --------------------------------------------------
 
-      - name: Create RetroPhosphor.app
+      - name: Create LidWarp.app
         run: |
-          APP="build/RetroPhosphor.app"
+          APP="build/LidWarp.app"
 
           mkdir -p \
             "$APP/Contents/MacOS" \
@@ -236,49 +248,49 @@ jobs:
             "$APP/Contents/MacOS/RetroPhosphor"
 
           cat > "$APP/Contents/Info.plist" <<'PLIST'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-          "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>CFBundleDisplayName</key>
-              <string>RetroPhosphor</string>
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+"http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDisplayName</key>
+    <string>LidWarp</string>
 
-              <key>CFBundleExecutable</key>
-              <string>RetroPhosphor</string>
+    <key>CFBundleExecutable</key>
+    <string>RetroPhosphor</string>
 
-              <key>CFBundleIdentifier</key>
-              <string>com.retro-phosphor.app</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.lidwarp.app</string>
 
-              <key>CFBundleInfoDictionaryVersion</key>
-              <string>6.0</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
 
-              <key>CFBundleName</key>
-              <string>RetroPhosphor</string>
+    <key>CFBundleName</key>
+    <string>LidWarp</string>
 
-              <key>CFBundlePackageType</key>
-              <string>APPL</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
 
-              <key>CFBundleShortVersionString</key>
-              <string>1.0.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0.0</string>
 
-              <key>CFBundleVersion</key>
-              <string>1</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
 
-              <key>LSMinimumSystemVersion</key>
-              <string>13.0</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>13.0</string>
 
-              <key>LSUIElement</key>
-              <true/>
+    <key>LSUIElement</key>
+    <true/>
 
-              <key>NSHighResolutionCapable</key>
-              <true/>
+    <key>NSHighResolutionCapable</key>
+    <true/>
 
-              <key>NSScreenCaptureUsageDescription</key>
-              <string>RetroPhosphor needs Screen Recording access to capture the display and apply the visual effect.</string>
-          </dict>
-          </plist>
-          PLIST
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>LidWarp needs Screen Recording access to capture the display and apply the visual effect.</string>
+</dict>
+</plist>
+PLIST
 
           echo "Application bundle:"
           find "$APP" -maxdepth 3 -print
@@ -291,13 +303,14 @@ jobs:
         run: |
           plutil \
             -lint \
-            build/RetroPhosphor.app/Contents/Info.plist
+            build/LidWarp.app/Contents/Info.plist
 
           echo ""
           echo "Bundle information:"
+
           plutil \
             -p \
-            build/RetroPhosphor.app/Contents/Info.plist
+            build/LidWarp.app/Contents/Info.plist
 
       # --------------------------------------------------
       # Ad-hoc code signing
@@ -309,7 +322,7 @@ jobs:
             --force \
             --deep \
             --sign - \
-            build/RetroPhosphor.app
+            build/LidWarp.app
 
       # --------------------------------------------------
       # Verify signature
@@ -322,22 +335,22 @@ jobs:
             --deep \
             --strict \
             --verbose=2 \
-            build/RetroPhosphor.app
+            build/LidWarp.app
 
       # --------------------------------------------------
-      # Verify executable
+      # Verify application executable
       # --------------------------------------------------
 
       - name: Verify application executable
         run: |
           test -x \
-            build/RetroPhosphor.app/Contents/MacOS/RetroPhosphor
+            build/LidWarp.app/Contents/MacOS/RetroPhosphor
 
           file \
-            build/RetroPhosphor.app/Contents/MacOS/RetroPhosphor
+            build/LidWarp.app/Contents/MacOS/RetroPhosphor
 
           echo ""
-          echo "Executable verified."
+          echo "LidWarp executable verified."
 
       # --------------------------------------------------
       # Create release ZIP
@@ -352,14 +365,14 @@ jobs:
             -k \
             --sequesterRsrc \
             --keepParent \
-            RetroPhosphor.app \
-            RetroPhosphor-macOS.zip
+            LidWarp.app \
+            LidWarp-macOS.zip
 
           cd ..
 
           echo "Release ZIP:"
           ls -lh \
-            build/RetroPhosphor-macOS.zip
+            build/LidWarp-macOS.zip
 
       # --------------------------------------------------
       # Create release manifest
@@ -367,15 +380,18 @@ jobs:
 
       - name: Create release manifest
         run: |
-          APP="build/RetroPhosphor.app"
+          APP="build/LidWarp.app"
 
           {
-            echo "RetroPhosphor Release"
-            echo "====================="
+            echo "LidWarp Release"
+            echo "==============="
             echo ""
             echo "Version: 1.0.0"
             echo "Build: 1"
             echo "Minimum macOS: 13.0"
+            echo ""
+            echo "Application:"
+            echo "LidWarp.app"
             echo ""
             echo "Bundle ID:"
             /usr/libexec/PlistBuddy \
@@ -390,7 +406,7 @@ jobs:
             echo ""
             echo "ZIP:"
             ls -lh \
-              build/RetroPhosphor-macOS.zip
+              build/LidWarp-macOS.zip
 
             echo ""
             echo "Code Signature:"
@@ -406,13 +422,13 @@ jobs:
       # Upload final application
       # --------------------------------------------------
 
-      - name: Upload macOS application
+      - name: Upload LidWarp macOS release
         uses: actions/upload-artifact@v4
         with:
-          name: RetroPhosphor-macOS
+          name: LidWarp-macOS
           path: |
-            build/RetroPhosphor.app
-            build/RetroPhosphor-macOS.zip
+            build/LidWarp.app
+            build/LidWarp-macOS.zip
             build/RELEASE-MANIFEST.txt
           if-no-files-found: error
 
@@ -424,7 +440,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: RetroPhosphor-render-preview
+          name: LidWarp-render-preview
           path: build/render-preview
           if-no-files-found: warn
 
@@ -436,7 +452,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: RetroPhosphor-test-report
+          name: LidWarp-test-report
           path: build/test-output
           if-no-files-found: warn
 
@@ -448,6 +464,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: RetroPhosphor-build-diagnostics
+          name: LidWarp-build-diagnostics
           path: build/diagnostics
           if-no-files-found: warn
