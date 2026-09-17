@@ -4,6 +4,8 @@ import CoreGraphics
 
 final class RetroPhosphorTests: XCTestCase {
 
+    // MARK: - Fold Clamping
+
     func testFoldAmountClampsBelowZero() {
         XCTAssertEqual(
             VisualEffectMath.clampedFoldAmount(-1.0),
@@ -55,6 +57,8 @@ final class RetroPhosphorTests: XCTestCase {
         )
     }
 
+    // MARK: - Fold Rotation
+
     func testFlatFoldProducesNoRotation() {
         XCTAssertEqual(
             VisualEffectMath.foldRotation(
@@ -82,6 +86,24 @@ final class RetroPhosphorTests: XCTestCase {
         )
     }
 
+    func testRotationRemainsClampedForOutOfRangeValues() {
+        XCTAssertEqual(
+            VisualEffectMath.foldRotation(
+                for: -1
+            ),
+            0
+        )
+
+        XCTAssertEqual(
+            VisualEffectMath.foldRotation(
+                for: 2
+            ),
+            -22
+        )
+    }
+
+    // MARK: - Legacy Fold Scale
+
     func testFlatFoldPreservesFullHeight() {
         XCTAssertEqual(
             VisualEffectMath.foldVerticalScale(
@@ -108,6 +130,193 @@ final class RetroPhosphorTests: XCTestCase {
             0.95
         )
     }
+
+    // MARK: - Hinge Geometry
+
+    func testFlatFoldKeepsTopScaleAtOne() {
+        XCTAssertEqual(
+            VisualEffectMath.foldTopScale(
+                for: 0
+            ),
+            1.0
+        )
+    }
+
+    func testMaximumFoldReducesTopScaleByEighteenPercent() {
+        XCTAssertEqual(
+            VisualEffectMath.foldTopScale(
+                for: 1
+            ),
+            0.82
+        )
+    }
+
+    func testHalfFoldReducesTopScaleByNinePercent() {
+        XCTAssertEqual(
+            VisualEffectMath.foldTopScale(
+                for: 0.5
+            ),
+            0.91
+        )
+    }
+
+    func testFlatFoldKeepsBottomScaleAtOne() {
+        XCTAssertEqual(
+            VisualEffectMath.foldBottomScale(
+                for: 0
+            ),
+            1.0
+        )
+    }
+
+    func testMaximumFoldReducesBottomScaleByFourPercent() {
+        XCTAssertEqual(
+            VisualEffectMath.foldBottomScale(
+                for: 1
+            ),
+            0.96
+        )
+    }
+
+    func testHalfFoldReducesBottomScaleByTwoPercent() {
+        XCTAssertEqual(
+            VisualEffectMath.foldBottomScale(
+                for: 0.5
+            ),
+            0.98
+        )
+    }
+
+    func testFoldPerspectiveStartsAtBaseValue() {
+        XCTAssertEqual(
+            VisualEffectMath.foldPerspective(
+                for: 0
+            ),
+            0.65
+        )
+    }
+
+    func testMaximumFoldAddsPerspective() {
+        XCTAssertEqual(
+            VisualEffectMath.foldPerspective(
+                for: 1
+            ),
+            0.85
+        )
+    }
+
+    func testHalfFoldAddsHalfPerspectiveIncrease() {
+        XCTAssertEqual(
+            VisualEffectMath.foldPerspective(
+                for: 0.5
+            ),
+            0.75
+        )
+    }
+
+    // MARK: - Fold Shadow
+
+    func testFlatFoldHasBaseShadowOpacity() {
+        XCTAssertEqual(
+            VisualEffectMath.foldShadowOpacity(
+                for: 0
+            ),
+            0.25
+        )
+    }
+
+    func testMaximumFoldHasStrongerShadowOpacity() {
+        XCTAssertEqual(
+            VisualEffectMath.foldShadowOpacity(
+                for: 1
+            ),
+            0.55
+        )
+    }
+
+    func testHalfFoldHasIntermediateShadowOpacity() {
+        XCTAssertEqual(
+            VisualEffectMath.foldShadowOpacity(
+                for: 0.5
+            ),
+            0.40
+        )
+    }
+
+    func testFlatFoldHasBaseShadowRadius() {
+        XCTAssertEqual(
+            VisualEffectMath.foldShadowRadius(
+                for: 0
+            ),
+            18
+        )
+    }
+
+    func testMaximumFoldHasLargerShadowRadius() {
+        XCTAssertEqual(
+            VisualEffectMath.foldShadowRadius(
+                for: 1
+            ),
+            32
+        )
+    }
+
+    func testHalfFoldHasIntermediateShadowRadius() {
+        XCTAssertEqual(
+            VisualEffectMath.foldShadowRadius(
+                for: 0.5
+            ),
+            25
+        )
+    }
+
+    // MARK: - Shadow / Perspective Clamping
+
+    func testHingeGeometryClampsOutOfRangeValues() {
+        XCTAssertEqual(
+            VisualEffectMath.foldTopScale(
+                for: -1
+            ),
+            1.0
+        )
+
+        XCTAssertEqual(
+            VisualEffectMath.foldTopScale(
+                for: 2
+            ),
+            0.82
+        )
+
+        XCTAssertEqual(
+            VisualEffectMath.foldBottomScale(
+                for: -1
+            ),
+            1.0
+        )
+
+        XCTAssertEqual(
+            VisualEffectMath.foldBottomScale(
+                for: 2
+            ),
+            0.96
+        )
+
+        XCTAssertEqual(
+            VisualEffectMath.foldPerspective(
+                for: -1
+            ),
+            0.65
+        )
+
+        XCTAssertEqual(
+            VisualEffectMath.foldPerspective(
+                for: 2
+            ),
+            0.85
+        )
+    }
+
+    // MARK: - Phosphor Math
 
     func testPhosphorDisabledKeepsNormalSaturation() {
         XCTAssertEqual(
@@ -162,6 +371,8 @@ final class RetroPhosphorTests: XCTestCase {
             1.08
         )
     }
+
+    // MARK: - Renderer
 
     func testRendererReturnsImageWhenPhosphorDisabled() {
         let renderer = PhosphorRenderer()
@@ -220,17 +431,17 @@ final class RetroPhosphorTests: XCTestCase {
                 phosphorGreen: true
             )
         else {
-            XCTFail("Renderer returned no output image.")
+            XCTFail(
+                "Renderer returned no output image."
+            )
             return
         }
 
-        let inputPixels = readPixels(
-            from: image
-        )
+        let inputPixels =
+            readPixels(from: image)
 
-        let outputPixels = readPixels(
-            from: output
-        )
+        let outputPixels =
+            readPixels(from: output)
 
         XCTAssertNotNil(inputPixels)
         XCTAssertNotNil(outputPixels)
@@ -257,33 +468,27 @@ final class RetroPhosphorTests: XCTestCase {
                 phosphorGreen: true
             )
         else {
-            XCTFail("Renderer returned no output image.")
+            XCTFail(
+                "Renderer returned no output image."
+            )
             return
         }
 
         guard let pixels =
             readPixels(from: output)
         else {
-            XCTFail("Could not read output pixels.")
+            XCTFail(
+                "Could not read output pixels."
+            )
             return
         }
 
         XCTAssertFalse(
             pixels.isEmpty
         )
-
-        for byte in pixels {
-            XCTAssertGreaterThanOrEqual(
-                byte,
-                0
-            )
-
-            XCTAssertLessThanOrEqual(
-                byte,
-                255
-            )
-        }
     }
+
+    // MARK: - Test Image
 
     private func makeTestImage() -> CGImage {
         let width = 32
@@ -293,30 +498,41 @@ final class RetroPhosphorTests: XCTestCase {
             CGColorSpaceCreateDeviceRGB()
 
         let bytesPerPixel = 4
+
         let bytesPerRow =
             width * bytesPerPixel
 
         var pixels = [UInt8](
             repeating: 0,
-            count: width * height * bytesPerPixel
+            count:
+                width *
+                height *
+                bytesPerPixel
         )
 
         for y in 0..<height {
             for x in 0..<width {
 
                 let index =
-                    (y * width + x) * bytesPerPixel
+                    (y * width + x) *
+                    bytesPerPixel
 
                 let red =
                     UInt8(
                         (x * 255) /
-                        max(width - 1, 1)
+                        max(
+                            width - 1,
+                            1
+                        )
                     )
 
                 let green =
                     UInt8(
                         (y * 255) /
-                        max(height - 1, 1)
+                        max(
+                            height - 1,
+                            1
+                        )
                     )
 
                 let blue =
@@ -328,16 +544,25 @@ final class RetroPhosphorTests: XCTestCase {
                         )
                     )
 
-                pixels[index] = red
-                pixels[index + 1] = green
-                pixels[index + 2] = blue
-                pixels[index + 3] = 255
+                pixels[index] =
+                    red
+
+                pixels[index + 1] =
+                    green
+
+                pixels[index + 2] =
+                    blue
+
+                pixels[index + 3] =
+                    255
             }
         }
 
-        let provider = CGDataProvider(
-            data: Data(pixels) as CFData
-        )!
+        let provider =
+            CGDataProvider(
+                data:
+                    Data(pixels) as CFData
+            )!
 
         return CGImage(
             width: width,
@@ -348,7 +573,9 @@ final class RetroPhosphorTests: XCTestCase {
             space: colorSpace,
             bitmapInfo: CGBitmapInfo(
                 rawValue:
-                    CGImageAlphaInfo.premultipliedLast.rawValue
+                    CGImageAlphaInfo
+                        .premultipliedLast
+                        .rawValue
             ),
             provider: provider,
             decode: nil,
@@ -370,10 +597,19 @@ final class RetroPhosphorTests: XCTestCase {
             return nil
         }
 
+        guard
+            let pointer =
+                CFDataGetBytePtr(data)
+        else {
+            return nil
+        }
+
+        let length =
+            CFDataGetLength(data)
+
         return Array(
-            CFDataGetBytePtr(data)!
-            ..
-            < CFDataGetBytePtr(data)! + CFDataGetLength(data)
+            pointer..
+            < pointer + length
         )
     }
 }
