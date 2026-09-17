@@ -27,11 +27,17 @@ struct MenuContent: View {
 
             Divider()
 
-            // MARK: - Phosphor
+            // MARK: - CRT Appearance
 
             Toggle(
                 "Retro Phosphor Green",
                 isOn: $model.phosphorGreen
+            )
+            .disabled(model.isPreparing)
+
+            Toggle(
+                "CRT Glow",
+                isOn: $model.crtGlow
             )
             .disabled(model.isPreparing)
 
