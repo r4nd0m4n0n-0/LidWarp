@@ -69,6 +69,19 @@ final class AppModel: ObservableObject {
         }
     }
 
+    @Published var autoFoldSpeed: Double = 0.5 {
+        didSet {
+            let clampedValue = min(
+                max(autoFoldSpeed, 0.1),
+                1.0
+            )
+
+            if autoFoldSpeed != clampedValue {
+                autoFoldSpeed = clampedValue
+            }
+        }
+    }
+
     @Published private(set) var captureAvailable = false
     @Published private(set) var isPreparing = true
 
@@ -188,7 +201,6 @@ final class AppModel: ObservableObject {
             }
 
             var direction = 1.0
-            let step = 0.01
 
             while !Task.isCancelled {
 
@@ -197,10 +209,18 @@ final class AppModel: ObservableObject {
                     break
                 }
 
+                let speed =
+                    0.002 +
+                    (
+                        0.018 *
+                        self.autoFoldSpeed
+                    )
+
                 var nextValue =
                     self.foldAmount +
                     (
-                        step * direction
+                        speed *
+                        direction
                     )
 
                 if nextValue >= 1.0 {
@@ -219,6 +239,8 @@ final class AppModel: ObservableObject {
                     nanoseconds: 30_000_000
                 )
             }
+
+            self.autoFoldTask = nil
         }
     }
 
