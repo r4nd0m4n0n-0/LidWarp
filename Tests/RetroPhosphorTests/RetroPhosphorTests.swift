@@ -608,8 +608,10 @@ final class RetroPhosphorTests: XCTestCase {
             CFDataGetLength(data)
 
         return Array(
-            pointer..
-            < pointer + length
+            UnsafeBufferPointer(
+                start: pointer,
+                count: length
+            )
         )
     }
 }
