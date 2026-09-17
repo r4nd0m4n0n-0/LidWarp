@@ -4,8 +4,6 @@ import SwiftUI
 @MainActor
 final class ScreenOverlayController {
 
-    // MARK: - Properties
-
     private let capture: ScreenCaptureController
 
     private var window: NSWindow?
@@ -18,13 +16,9 @@ final class ScreenOverlayController {
     private var phosphor = false
     private var fold: Double = 0
 
-    // MARK: - Initialization
-
     init(capture: ScreenCaptureController) {
         self.capture = capture
     }
-
-    // MARK: - Configuration
 
     func setPhosphorGreen(_ enabled: Bool) {
         phosphor = enabled
@@ -32,7 +26,9 @@ final class ScreenOverlayController {
     }
 
     func setFoldAmount(_ value: Double) {
-        fold = min(max(value, 0), 1)
+        fold =
+            VisualEffectMath.clampedFoldAmount(value)
+
         updateRootView()
     }
 
@@ -52,8 +48,6 @@ final class ScreenOverlayController {
             foldAmount: fold
         )
     }
-
-    // MARK: - Start
 
     func start() async {
         guard window == nil else {
@@ -91,11 +85,7 @@ final class ScreenOverlayController {
 
         overlayWindow.isOpaque = false
         overlayWindow.backgroundColor = .clear
-
-        // Keep the effect above normal application windows.
         overlayWindow.level = .screenSaver
-
-        // The overlay is visual only.
         overlayWindow.ignoresMouseEvents = true
 
         overlayWindow.collectionBehavior = [
@@ -103,8 +93,6 @@ final class ScreenOverlayController {
             .fullScreenAuxiliary
         ]
 
-        // Prevent other screen-capture mechanisms
-        // from intentionally sharing this window.
         overlayWindow.sharingType = .none
 
         window = overlayWindow
@@ -148,8 +136,6 @@ final class ScreenOverlayController {
         }
     }
 
-    // MARK: - Stop
-
     func stop() {
         task?.cancel()
         task = nil
@@ -165,13 +151,41 @@ final class ScreenOverlayController {
     }
 }
 
-// MARK: - Overlay View
-
 private struct OverlayView: View {
 
     let image: CGImage?
     let phosphorGreen: Bool
     let foldAmount: Double
+
+    private var foldRotation: Double {
+        VisualEffectMath.foldRotation(
+            for: foldAmount
+        )
+    }
+
+    private var foldScale: Double {
+        VisualEffectMath.foldVerticalScale(
+            for: foldAmount
+        )
+    }
+
+    private var saturation: Double {
+        VisualEffectMath.phosphorSaturation(
+            enabled: phosphorGreen
+        )
+    }
+
+    private var brightness: Double {
+        VisualEffectMath.phosphorBrightness(
+            enabled: phosphorGreen
+        )
+    }
+
+    private var contrast: Double {
+        VisualEffectMath.phosphorContrast(
+            enabled: phosphorGreen
+        )
+    }
 
     var body: some View {
         GeometryReader { proxy in
@@ -191,11 +205,7 @@ private struct OverlayView: View {
                     )
                     .clipped()
 
-                    // Convert the display toward a
-                    // phosphor-green monochrome appearance.
-                    .saturation(
-                        phosphorGreen ? 0 : 1
-                    )
+                    .saturation(saturation)
 
                     .colorMultiply(
                         phosphorGreen
@@ -207,26 +217,18 @@ private struct OverlayView: View {
                             : .white
                     )
 
-                    .brightness(
-                        phosphorGreen ? 0.02 : 0
-                    )
+                    .brightness(brightness)
 
-                    .contrast(
-                        phosphorGreen ? 1.08 : 1.0
-                    )
+                    .contrast(contrast)
 
-                    // CRT scanline layer.
                     .overlay {
                         if phosphorGreen {
                             Scanlines()
                         }
                     }
 
-                    // Simulated hinged/folded display.
                     .rotation3DEffect(
-                        .degrees(
-                            -22 * foldAmount
-                        ),
+                        .degrees(foldRotation),
                         axis: (
                             x: 1,
                             y: 0,
@@ -238,16 +240,12 @@ private struct OverlayView: View {
 
                     .scaleEffect(
                         x: 1,
-                        y: 1 - (
-                            0.10 * foldAmount
-                        ),
+                        y: foldScale,
                         anchor: .bottom
                     )
 
                     .shadow(
-                        color: .black.opacity(
-                            0.25
-                        ),
+                        color: .black.opacity(0.25),
                         radius:
                             18 * foldAmount
                     )
@@ -257,8 +255,6 @@ private struct OverlayView: View {
         .ignoresSafeArea()
     }
 }
-
-// MARK: - Scanlines
 
 private struct Scanlines: View {
 
