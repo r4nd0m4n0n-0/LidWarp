@@ -14,6 +14,12 @@ final class AppModel: ObservableObject {
             )
 
             updateOverlay()
+
+            if !isEnabled {
+                stopAutoFold()
+            } else if autoFold {
+                startAutoFold()
+            }
         }
     }
 
@@ -24,13 +30,18 @@ final class AppModel: ObservableObject {
                 forKey: Keys.phosphorGreen
             )
 
-            overlay?.setPhosphorGreen(phosphorGreen)
+            overlay?.setPhosphorGreen(
+                phosphorGreen
+            )
         }
     }
 
     @Published var foldAmount: Double = 0 {
         didSet {
-            let clampedValue = min(max(foldAmount, 0), 1)
+            let clampedValue = min(
+                max(foldAmount, 0),
+                1
+            )
 
             if foldAmount != clampedValue {
                 foldAmount = clampedValue
@@ -42,7 +53,19 @@ final class AppModel: ObservableObject {
                 forKey: Keys.foldAmount
             )
 
-            overlay?.setFoldAmount(foldAmount)
+            overlay?.setFoldAmount(
+                foldAmount
+            )
+        }
+    }
+
+    @Published var autoFold = false {
+        didSet {
+            if autoFold {
+                startAutoFold()
+            } else {
+                stopAutoFold()
+            }
         }
     }
 
@@ -54,10 +77,17 @@ final class AppModel: ObservableObject {
     private let capture = ScreenCaptureController()
     private var overlay: ScreenOverlayController?
 
+    private var autoFoldTask: Task<Void, Never>?
+
     private enum Keys {
-        static let enabled = "RetroPhosphor.enabled"
-        static let phosphorGreen = "RetroPhosphor.phosphorGreen"
-        static let foldAmount = "RetroPhosphor.foldAmount"
+        static let enabled =
+            "RetroPhosphor.enabled"
+
+        static let phosphorGreen =
+            "RetroPhosphor.phosphorGreen"
+
+        static let foldAmount =
+            "RetroPhosphor.foldAmount"
     }
 
     // MARK: - Initialization
@@ -110,8 +140,6 @@ final class AppModel: ObservableObject {
 
         isPreparing = false
 
-        // Restore the previous enabled state once
-        // the overlay and permission state are ready.
         if isEnabled && captureAvailable {
             updateOverlay()
         }
@@ -143,6 +171,62 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // MARK: - Auto Fold
+
+    private func startAutoFold() {
+        guard autoFoldTask == nil else {
+            return
+        }
+
+        guard isEnabled else {
+            return
+        }
+
+        autoFoldTask = Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+
+            var direction = 1.0
+            let step = 0.01
+
+            while !Task.isCancelled {
+
+                if !self.autoFold ||
+                    !self.isEnabled {
+                    break
+                }
+
+                var nextValue =
+                    self.foldAmount +
+                    (
+                        step * direction
+                    )
+
+                if nextValue >= 1.0 {
+                    nextValue = 1.0
+                    direction = -1.0
+                }
+
+                if nextValue <= 0.0 {
+                    nextValue = 0.0
+                    direction = 1.0
+                }
+
+                self.foldAmount = nextValue
+
+                try? await Task.sleep(
+                    nanoseconds: 30_000_000
+                )
+            }
+        }
+    }
+
+    private func stopAutoFold() {
+        autoFoldTask?.cancel()
+        autoFoldTask = nil
+    }
+
     // MARK: - Overlay
 
     private func updateOverlay() {
@@ -161,5 +245,11 @@ final class AppModel: ObservableObject {
         } else {
             overlay.stop()
         }
+    }
+
+    // MARK: - Deinitialization
+
+    deinit {
+        autoFoldTask?.cancel()
     }
 }
