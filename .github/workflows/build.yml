@@ -59,79 +59,57 @@ jobs:
         run: |
           mkdir -p build/test-output
 
-      - name: Capture Swift test information
+      - name: Capture test information
         if: always()
         run: |
-          echo "RetroPhosphor automated test run" \
-            > build/test-output/test-summary.txt
+          {
+            echo "RetroPhosphor automated test run"
+            echo "================================"
+            echo ""
+            echo "Date:"
+            date
+            echo ""
+            echo "macOS:"
+            sw_vers
+            echo ""
+            echo "Swift:"
+            swift --version
+            echo ""
+            echo "Architecture:"
+            uname -m
+          } > build/test-output/test-summary.txt
 
-          echo "" \
-            >> build/test-output/test-summary.txt
-
-          echo "Date:" \
-            >> build/test-output/test-summary.txt
-
-          date \
-            >> build/test-output/test-summary.txt
-
-          echo "" \
-            >> build/test-output/test-summary.txt
-
-          echo "macOS:" \
-            >> build/test-output/test-summary.txt
-
-          sw_vers \
-            >> build/test-output/test-summary.txt
-
-          echo "" \
-            >> build/test-output/test-summary.txt
-
-          echo "Swift:" \
-            >> build/test-output/test-summary.txt
-
-          swift --version \
-            >> build/test-output/test-summary.txt
-
-          echo "" \
-            >> build/test-output/test-summary.txt
-
-          echo "Architecture:" \
-            >> build/test-output/test-summary.txt
-
-          uname -m \
-            >> build/test-output/test-summary.txt
-
-      - name: Inspect Swift package
+      - name: Inspect source and test files
         if: always()
         run: |
           echo "========================================"
-          echo "PACKAGE CONTENTS"
+          echo "SOURCE FILES"
           echo "========================================"
 
-          find Sources -maxdepth 4 -type f -print \
-            | sort \
+          find Sources -maxdepth 4 -type f -print | sort \
             | tee build/test-output/source-files.txt
 
           echo ""
           echo "========================================"
-          echo "TEST CONTENTS"
+          echo "TEST FILES"
           echo "========================================"
 
-          find Tests -maxdepth 4 -type f -print \
-            | sort \
-            | tee build/test-output/test-files.txt
+          if [ -d Tests ]; then
+            find Tests -maxdepth 4 -type f -print | sort \
+              | tee build/test-output/test-files.txt
+          else
+            echo "No Tests directory found." \
+              | tee build/test-output/test-files.txt
+          fi
 
-      - name: Locate built executable
+      - name: Inspect build output
+        if: always()
         run: |
           echo "========================================"
           echo "BUILD OUTPUT"
           echo "========================================"
 
-          find .build \
-            -maxdepth 6 \
-            -type f \
-            -print \
-            | sort \
+          find .build -maxdepth 8 -type f -print | sort \
             | tee build/test-output/build-files.txt
 
       - name: Create release directory
@@ -141,107 +119,88 @@ jobs:
       - name: Locate RetroPhosphor executable
         run: |
           if [ -f ".build/arm64-apple-macosx/debug/RetroPhosphor" ]; then
-            echo ".build/arm64-apple-macosx/debug/RetroPhosphor" \
-              > build/test-output/executable-path.txt
-
-            cp \
-              ".build/arm64-apple-macosx/debug/RetroPhosphor" \
-              "build/RetroPhosphor/RetroPhosphor"
-
+            EXECUTABLE=".build/arm64-apple-macosx/debug/RetroPhosphor"
           elif [ -f ".build/debug/RetroPhosphor" ]; then
-            echo ".build/debug/RetroPhosphor" \
-              > build/test-output/executable-path.txt
-
-            cp \
-              ".build/debug/RetroPhosphor" \
-              "build/RetroPhosphor/RetroPhosphor"
-
+            EXECUTABLE=".build/debug/RetroPhosphor"
           else
             echo "ERROR: RetroPhosphor executable was not found."
-
             echo ""
             echo "Available files:"
-            find .build \
-              -maxdepth 8 \
-              -type f \
-              -print
-
+            find .build -maxdepth 8 -type f -print
             exit 1
           fi
+
+          echo "$EXECUTABLE" \
+            | tee build/test-output/executable-path.txt
+
+          cp "$EXECUTABLE" \
+            "build/RetroPhosphor/RetroPhosphor"
 
       - name: Inspect executable
         run: |
           echo "========================================"
-          echo "EXECUTABLE INFORMATION"
+          echo "EXECUTABLE"
           echo "========================================"
 
-          file \
-            "build/RetroPhosphor/RetroPhosphor"
+          file "build/RetroPhosphor/RetroPhosphor"
 
           echo ""
 
-          ls -lh \
-            "build/RetroPhosphor/RetroPhosphor"
+          ls -lh "build/RetroPhosphor/RetroPhosphor"
 
       - name: Make executable runnable
         run: |
-          chmod +x \
-            "build/RetroPhosphor/RetroPhosphor"
+          chmod +x "build/RetroPhosphor/RetroPhosphor"
 
       - name: Create app bundle
         run: |
           APP="build/RetroPhosphor/RetroPhosphor.app"
 
-          mkdir -p \
-            "$APP/Contents/MacOS"
-
-          mkdir -p \
-            "$APP/Contents/Resources"
+          mkdir -p "$APP/Contents/MacOS"
+          mkdir -p "$APP/Contents/Resources"
 
           cp \
             "build/RetroPhosphor/RetroPhosphor" \
             "$APP/Contents/MacOS/RetroPhosphor"
 
           cat > "$APP/Contents/Info.plist" <<'PLIST'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+            "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleDevelopmentRegion</key>
+              <string>en</string>
 
-    <key>CFBundleDevelopmentRegion</key>
-    <string>en</string>
+              <key>CFBundleExecutable</key>
+              <string>RetroPhosphor</string>
 
-    <key>CFBundleExecutable</key>
-    <string>RetroPhosphor</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.retro.phosphor</string>
 
-    <key>CFBundleIdentifier</key>
-    <string>com.retro.phosphor</string>
+              <key>CFBundleInfoDictionaryVersion</key>
+              <string>6.0</string>
 
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
+              <key>CFBundleName</key>
+              <string>RetroPhosphor</string>
 
-    <key>CFBundleName</key>
-    <string>RetroPhosphor</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
 
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
+              <string>1.0.0</string>
 
-    <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
+              <key>CFBundleVersion</key>
+              <string>1</string>
 
-    <key>CFBundleVersion</key>
-    <string>1</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>13.0</string>
 
-    <key>LSMinimumSystemVersion</key>
-    <string>13.0</string>
-
-    <key>LSUIElement</key>
-    <true/>
-
-</dict>
-</plist>
-PLIST
+              <key>LSUIElement</key>
+              <true/>
+          </dict>
+          </plist>
+          PLIST
 
       - name: Verify app bundle
         run: |
@@ -251,26 +210,21 @@ PLIST
           echo "APP BUNDLE"
           echo "========================================"
 
-          find "$APP" \
-            -maxdepth 5 \
-            -print \
-            | sort
+          find "$APP" -maxdepth 5 -print | sort
 
           echo ""
           echo "========================================"
           echo "INFO.PLIST"
           echo "========================================"
 
-          plutil -p \
-            "$APP/Contents/Info.plist"
+          plutil -p "$APP/Contents/Info.plist"
 
           echo ""
           echo "========================================"
           echo "APP EXECUTABLE"
           echo "========================================"
 
-          file \
-            "$APP/Contents/MacOS/RetroPhosphor"
+          file "$APP/Contents/MacOS/RetroPhosphor"
 
       - name: Ad-hoc code sign app
         run: |
@@ -295,14 +249,11 @@ PLIST
           echo "FINAL APP"
           echo "========================================"
 
-          ls -lah \
-            "build/RetroPhosphor"
+          ls -lah "build/RetroPhosphor"
 
           echo ""
-          echo "App size:"
 
-          du -sh \
-            "build/RetroPhosphor/RetroPhosphor.app"
+          du -sh "build/RetroPhosphor/RetroPhosphor.app"
 
       - name: Create ZIP
         run: |
@@ -326,7 +277,7 @@ PLIST
             "build/RetroPhosphor/RetroPhosphor-macOS.zip"
 
           echo ""
-          echo "ZIP contents:"
+          echo "ZIP CONTENTS"
 
           unzip -l \
             "build/RetroPhosphor/RetroPhosphor-macOS.zip"
@@ -336,67 +287,28 @@ PLIST
         run: |
           REPORT="build/test-output/final-build-report.txt"
 
-          echo "RetroPhosphor Build Report" \
-            > "$REPORT"
-
-          echo "===========================" \
-            >> "$REPORT"
-
-          echo "" \
-            >> "$REPORT"
-
-          echo "Build date:" \
-            >> "$REPORT"
-
-          date \
-            >> "$REPORT"
-
-          echo "" \
-            >> "$REPORT"
-
-          echo "macOS:" \
-            >> "$REPORT"
-
-          sw_vers \
-            >> "$REPORT"
-
-          echo "" \
-            >> "$REPORT"
-
-          echo "Architecture:" \
-            >> "$REPORT"
-
-          uname -m \
-            >> "$REPORT"
-
-          echo "" \
-            >> "$REPORT"
-
-          echo "Swift:" \
-            >> "$REPORT"
-
-          swift --version \
-            >> "$REPORT"
-
-          echo "" \
-            >> "$REPORT"
-
-          echo "App:" \
-            >> "$REPORT"
-
-          ls -lh \
-            "build/RetroPhosphor/RetroPhosphor.app" \
-            >> "$REPORT"
-
-          echo "" \
-            >> "$REPORT"
-
-          echo "ZIP:" \
-            >> "$REPORT"
-
-          ls -lh \
-            "build/RetroPhosphor/RetroPhosphor-macOS.zip" \
-            >> "$REPORT"
+          {
+            echo "RetroPhosphor Build Report"
+            echo "==========================="
+            echo ""
+            echo "Build date:"
+            date
+            echo ""
+            echo "macOS:"
+            sw_vers
+            echo ""
+            echo "Architecture:"
+            uname -m
+            echo ""
+            echo "Swift:"
+            swift --version
+            echo ""
+            echo "App:"
+            ls -lh "build/RetroPhosphor/RetroPhosphor.app"
+            echo ""
+            echo "ZIP:"
+            ls -lh "build/RetroPhosphor/RetroPhosphor-macOS.zip"
+          } > "$REPORT"
 
       - name: Upload macOS app
         uses: actions/upload-artifact@v4
@@ -406,7 +318,7 @@ PLIST
           if-no-files-found: error
           retention-days: 14
 
-      - name: Upload automated test and build report
+      - name: Upload test report
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -415,7 +327,7 @@ PLIST
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Upload complete diagnostics
+      - name: Upload build diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
