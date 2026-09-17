@@ -7,8 +7,6 @@ final class ScreenCaptureController: NSObject,
     SCStreamDelegate
 {
 
-    // MARK: - Capture State
-
     private var stream: SCStream?
 
     private let captureQueue = DispatchQueue(
@@ -24,8 +22,6 @@ final class ScreenCaptureController: NSObject,
 
     private var continuation:
         AsyncStream<CGImage>.Continuation?
-
-    // MARK: - Permission
 
     func hasScreenCapturePermission() async -> Bool {
         do {
@@ -49,8 +45,6 @@ final class ScreenCaptureController: NSObject,
             )
     }
 
-    // MARK: - Frames
-
     func frames() -> AsyncStream<CGImage> {
         AsyncStream(
             bufferingPolicy: .bufferingNewest(1)
@@ -58,8 +52,6 @@ final class ScreenCaptureController: NSObject,
             self.continuation = continuation
         }
     }
-
-    // MARK: - Start
 
     func start(
         matchingScreenFrame screenFrame: CGRect,
@@ -126,8 +118,6 @@ final class ScreenCaptureController: NSObject,
         try await newStream.startCapture()
     }
 
-    // MARK: - Stop
-
     func stop() async {
         guard let currentStream = stream else {
             finishFrames()
@@ -146,8 +136,6 @@ final class ScreenCaptureController: NSObject,
         continuation = nil
     }
 
-    // MARK: - Display Matching
-
     private func findDisplay(
         matching screenFrame: CGRect,
         in displays: [SCDisplay]
@@ -162,9 +150,6 @@ final class ScreenCaptureController: NSObject,
             return exactMatch
         }
 
-        // If coordinate systems differ slightly between
-        // AppKit and ScreenCaptureKit, choose the display
-        // whose center is closest to the requested screen.
         let targetCenter = CGPoint(
             x: screenFrame.midX,
             y: screenFrame.midY
@@ -194,8 +179,6 @@ final class ScreenCaptureController: NSObject,
             (dx * dx) + (dy * dy)
         )
     }
-
-    // MARK: - ScreenCaptureKit Output
 
     func stream(
         _ stream: SCStream,
@@ -229,28 +212,22 @@ final class ScreenCaptureController: NSObject,
         continuation?.yield(cgImage)
     }
 
-    // MARK: - Capture Failure
-
     func stream(
         _ stream: SCStream,
         didStopWithError error: Error
     ) {
-
         self.stream = nil
 
         finishFrames()
     }
-
-    // MARK: - Errors
 
     enum CaptureError: Error {
         case noDisplay
     }
 }
 
-// MARK: - CGRect Convenience
-
 private extension CGRect {
+
     var center: CGPoint {
         CGPoint(
             x: midX,
