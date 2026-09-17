@@ -56,6 +56,8 @@ final class AppModel: ObservableObject {
     private let capture =
         ScreenCaptureController()
 
+    private let savedEnabledState: Bool
+
     private enum Keys {
         static let enabled =
             "RetroPhosphor.enabled"
@@ -70,7 +72,10 @@ final class AppModel: ObservableObject {
     // MARK: - Initialization
 
     init() {
-        isEnabled =
+
+        // Read the saved effect state before doing
+        // anything that could trigger the isEnabled didSet.
+        savedEnabledState =
             UserDefaults.standard.bool(
                 forKey: Keys.enabled
             )
@@ -85,8 +90,10 @@ final class AppModel: ObservableObject {
                 forKey: Keys.foldAmount
             )
 
-        // Never restore the visual effect before
-        // confirming the license.
+        // Always start disabled.
+        //
+        // The effect will only be restored after
+        // the license has been successfully validated.
         isEnabled = false
 
         Task {
@@ -97,6 +104,7 @@ final class AppModel: ObservableObject {
     // MARK: - Preparation
 
     func prepare() async {
+
         captureAvailable =
             await capture.hasScreenCapturePermission()
 
@@ -116,42 +124,43 @@ final class AppModel: ObservableObject {
         // Check the stored license when the app starts.
         await licenseManager.validate()
 
-        // Only restore the effect if the license
-        // is valid.
-        if licenseManager.isLicensed {
-            let savedEnabled =
-                UserDefaults.standard.bool(
-                    forKey: Keys.enabled
-                )
+        // Only restore the previously enabled effect
+        // after the license has been confirmed.
+        if licenseManager.isLicensed &&
+           savedEnabledState {
 
-            if savedEnabled {
-                isEnabled = true
-            }
+            isEnabled = true
         }
     }
 
     // MARK: - License
 
-    func activateLicense(_ key: String) async {
+    func activateLicense(
+        _ key: String
+    ) async {
+
         await licenseManager.activate(
             key: key
         )
 
         if licenseManager.isLicensed {
-            let savedEnabled =
-                UserDefaults.standard.bool(
-                    forKey: Keys.enabled
-                )
 
-            if savedEnabled {
+            // Activation succeeded.
+            //
+            // Restore the user's previous enabled
+            // state if they had the effect enabled.
+            if savedEnabledState {
                 isEnabled = true
             }
+
         } else {
+
             isEnabled = false
         }
     }
 
     func validateLicense() async {
+
         await licenseManager.validate()
 
         if !licenseManager.isLicensed {
@@ -160,6 +169,7 @@ final class AppModel: ObservableObject {
     }
 
     func deactivateLicense() async {
+
         await licenseManager.deactivate()
 
         isEnabled = false
@@ -168,8 +178,13 @@ final class AppModel: ObservableObject {
     // MARK: - Effect Control
 
     func toggleEffect() {
+
+        // Never allow the visual effect to run
+        // without a valid license.
         guard licenseManager.isLicensed else {
+
             isEnabled = false
+
             return
         }
 
@@ -179,7 +194,9 @@ final class AppModel: ObservableObject {
     // MARK: - Screen Recording
 
     func requestScreenRecording() {
+
         Task {
+
             await capture.requestContent()
 
             captureAvailable =
@@ -190,26 +207,28 @@ final class AppModel: ObservableObject {
     // MARK: - Overlay
 
     private func updateOverlay() {
+
         guard let overlay else {
             return
         }
 
-        // License is required before the overlay
+        // Licensing is required before the overlay
         // can actually run.
         guard licenseManager.isLicensed else {
-            if isEnabled {
-                isEnabled = false
-            }
 
             overlay.stop()
+
             return
         }
 
         if isEnabled {
+
             Task {
                 await overlay.start()
             }
+
         } else {
+
             overlay.stop()
         }
     }
