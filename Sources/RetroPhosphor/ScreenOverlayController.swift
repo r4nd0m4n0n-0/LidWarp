@@ -5,6 +5,7 @@ import SwiftUI
 final class ScreenOverlayController {
 
     private let capture: ScreenCaptureController
+    private let renderer = PhosphorRenderer()
 
     private var window: NSWindow?
     private var hosting:
@@ -126,8 +127,18 @@ final class ScreenOverlayController {
                         break
                     }
 
+                    let renderedImage =
+                        self.renderer.render(
+                            image: image,
+                            phosphorGreen: self.phosphor
+                        )
+
+                    guard let renderedImage else {
+                        continue
+                    }
+
                     self.updateRootView(
-                        image: image
+                        image: renderedImage
                     )
                 }
             } catch {
@@ -169,24 +180,6 @@ private struct OverlayView: View {
         )
     }
 
-    private var saturation: Double {
-        VisualEffectMath.phosphorSaturation(
-            enabled: phosphorGreen
-        )
-    }
-
-    private var brightness: Double {
-        VisualEffectMath.phosphorBrightness(
-            enabled: phosphorGreen
-        )
-    }
-
-    private var contrast: Double {
-        VisualEffectMath.phosphorContrast(
-            enabled: phosphorGreen
-        )
-    }
-
     var body: some View {
         GeometryReader { proxy in
             ZStack {
@@ -204,22 +197,6 @@ private struct OverlayView: View {
                         height: proxy.size.height
                     )
                     .clipped()
-
-                    .saturation(saturation)
-
-                    .colorMultiply(
-                        phosphorGreen
-                            ? Color(
-                                red: 0.20,
-                                green: 1.0,
-                                blue: 0.30
-                            )
-                            : .white
-                    )
-
-                    .brightness(brightness)
-
-                    .contrast(contrast)
 
                     .overlay {
                         if phosphorGreen {
