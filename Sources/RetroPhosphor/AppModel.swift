@@ -218,6 +218,22 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // MARK: - Reset
+
+    func resetFold() {
+        autoFold = false
+        foldAmount = 0
+    }
+
+    func resetVisualSettings() {
+        autoFold = false
+        foldAmount = 0
+        autoFoldSpeed = 0.5
+        effectIntensity = 1.0
+        phosphorGreen = false
+        crtGlow = false
+    }
+
     // MARK: - Auto Fold
 
     private func startAutoFold() {
