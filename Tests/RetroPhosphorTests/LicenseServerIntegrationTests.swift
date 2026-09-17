@@ -1,4 +1,3 @@
-import Foundation
 import XCTest
 
 final class LicenseServerIntegrationTests: XCTestCase {
@@ -6,38 +5,90 @@ final class LicenseServerIntegrationTests: XCTestCase {
     private let serverURL =
         "https://lidwarp-license.xchan2180.workers.dev"
 
-    private let testLicenseKey =
+    private let testLicense =
         "LIDWARP-TEST-001"
 
-    private var testDeviceID: String!
-
-    override func setUp() {
-        super.setUp()
-
-        testDeviceID =
-            "github-actions-\(UUID().uuidString)"
-    }
-
-    // MARK: - Health
-
-    func testLicenseServerHealth() async throws {
-
-        let url = try XCTUnwrap(
-            URL(string: serverURL + "/health")
-        )
+    private func request(
+        endpoint: String,
+        licenseKey: String,
+        deviceID: String
+    ) async throws -> (
+        statusCode: Int,
+        json: [String: Any]
+    ) {
+        guard let url = URL(
+            string: serverURL + endpoint
+        ) else {
+            throw NSError(
+                domain: "LicenseTests",
+                code: 1,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Invalid server URL"
+                ]
+            )
+        }
 
         var request = URLRequest(url: url)
-        request.httpMethod = "GET"
+        request.httpMethod = "POST"
+        request.setValue(
+            "application/json",
+            forHTTPHeaderField: "Content-Type"
+        )
+        request.setValue(
+            "application/json",
+            forHTTPHeaderField: "Accept"
+        )
+
+        let body: [String: String] = [
+            "licenseKey": licenseKey,
+            "deviceId": deviceID
+        ]
+
+        request.httpBody = try JSONSerialization.data(
+            withJSONObject: body
+        )
 
         let (data, response) =
             try await URLSession.shared.data(
                 for: request
             )
 
-        let httpResponse =
-            try XCTUnwrap(
-                response as? HTTPURLResponse
+        guard let httpResponse =
+            response as? HTTPURLResponse else {
+            throw NSError(
+                domain: "LicenseTests",
+                code: 2,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Invalid HTTP response"
+                ]
             )
+        }
+
+        let json =
+            try JSONSerialization.jsonObject(
+                with: data
+            ) as? [String: Any] ?? [:]
+
+        return (
+            httpResponse.statusCode,
+            json
+        )
+    }
+
+    func testLicenseServerHealth() async throws {
+        let url = URL(
+            string: serverURL + "/health"
+        )!
+
+        let (data, response) =
+            try await URLSession.shared.data(
+                from: url
+            )
+
+        let httpResponse =
+            response as! HTTPURLResponse
 
         XCTAssertEqual(
             httpResponse.statusCode,
@@ -45,84 +96,144 @@ final class LicenseServerIntegrationTests: XCTestCase {
         )
 
         let json =
-            try XCTUnwrap(
-                try JSONSerialization.jsonObject(
-                    with: data
-                ) as? [String: Any]
-            )
+            try JSONSerialization.jsonObject(
+                with: data
+            ) as! [String: Any]
 
         XCTAssertEqual(
             json["success"] as? Bool,
             true
         )
+
+        XCTAssertEqual(
+            json["status"] as? String,
+            "online"
+        )
+
+        XCTAssertEqual(
+            json["database"] as? String,
+            "connected"
+        )
     }
 
-    // MARK: - Activation
+    func testOneDeviceLimit() async throws {
+        let device1 =
+            "TEST-DEVICE-ONE-\(UUID().uuidString)"
 
-    func testLicenseActivation() async throws {
+        let device2 =
+            "TEST-DEVICE-TWO-\(UUID().uuidString)"
 
-        let response =
-            try await sendRequest(
-                endpoint: "/activate",
-                licenseKey: testLicenseKey,
-                deviceID: testDeviceID
-            )
-
-        XCTAssertEqual(
-            response.statusCode,
-            200,
-            "Activation should return HTTP 200"
-        )
-
-        XCTAssertEqual(
-            response.json["success"] as? Bool,
-            true
-        )
-
-        XCTAssertEqual(
-            response.json["activated"] as? Bool,
-            true
-        )
-
-        XCTAssertEqual(
-            response.json["licenseKey"] as? String,
-            testLicenseKey
-        )
-
-        _ = try await sendRequest(
+        // Clean up in case a previous run
+        // left an activation behind.
+        _ = try? await request(
             endpoint: "/deactivate",
-            licenseKey: testLicenseKey,
-            deviceID: testDeviceID
+            licenseKey: testLicense,
+            deviceID: device1
         )
-    }
 
-    // MARK: - Validation
+        _ = try? await request(
+            endpoint: "/deactivate",
+            licenseKey: testLicense,
+            deviceID: device2
+        )
 
-    func testActivatedLicenseValidation() async throws {
-
-        let activation =
-            try await sendRequest(
+        // Device 1 must activate successfully.
+        let first =
+            try await request(
                 endpoint: "/activate",
-                licenseKey: testLicenseKey,
-                deviceID: testDeviceID
+                licenseKey: testLicense,
+                deviceID: device1
             )
 
         XCTAssertEqual(
-            activation.statusCode,
+            first.statusCode,
             200
         )
 
+        XCTAssertEqual(
+            first.json["success"] as? Bool,
+            true
+        )
+
+        XCTAssertEqual(
+            first.json["activated"] as? Bool,
+            true
+        )
+
+        // The license must report one-device capacity.
+        XCTAssertEqual(
+            first.json["maxDevices"] as? Int,
+            1
+        )
+
+        // Activating the same device again
+        // must succeed as an existing device.
+        let existing =
+            try await request(
+                endpoint: "/activate",
+                licenseKey: testLicense,
+                deviceID: device1
+            )
+
+        XCTAssertEqual(
+            existing.statusCode,
+            200
+        )
+
+        XCTAssertEqual(
+            existing.json["success"] as? Bool,
+            true
+        )
+
+        XCTAssertEqual(
+            existing.json["existingDevice"] as? Bool,
+            true
+        )
+
+        // Device 2 must be rejected.
+        let second =
+            try await request(
+                endpoint: "/activate",
+                licenseKey: testLicense,
+                deviceID: device2
+            )
+
+        XCTAssertEqual(
+            second.statusCode,
+            409
+        )
+
+        XCTAssertEqual(
+            second.json["success"] as? Bool,
+            false
+        )
+
+        XCTAssertEqual(
+            second.json["error"] as? String,
+            "Device limit reached"
+        )
+
+        XCTAssertEqual(
+            second.json["maxDevices"] as? Int,
+            1
+        )
+
+        XCTAssertEqual(
+            second.json["devicesUsed"] as? Int,
+            1
+        )
+
+        // Device 1 must validate successfully.
         let validation =
-            try await sendRequest(
+            try await request(
                 endpoint: "/validate",
-                licenseKey: testLicenseKey,
-                deviceID: testDeviceID
+                licenseKey: testLicense,
+                deviceID: device1
             )
 
         XCTAssertEqual(
             validation.statusCode,
-            200,
-            "Validation should return HTTP 200"
+            200
         )
 
         XCTAssertEqual(
@@ -135,225 +246,17 @@ final class LicenseServerIntegrationTests: XCTestCase {
             true
         )
 
-        _ = try await sendRequest(
-            endpoint: "/deactivate",
-            licenseKey: testLicenseKey,
-            deviceID: testDeviceID
-        )
-    }
-
-    // MARK: - Unactivated Device
-
-    func testUnactivatedDeviceIsRejected() async throws {
-
-        let unusedDeviceID =
-            "github-actions-unused-\(UUID().uuidString)"
-
-        let response =
-            try await sendRequest(
-                endpoint: "/validate",
-                licenseKey: testLicenseKey,
-                deviceID: unusedDeviceID
-            )
-
-        XCTAssertEqual(
-            response.statusCode,
-            401,
-            "Unactivated device should return HTTP 401"
-        )
-
-        XCTAssertEqual(
-            response.json["success"] as? Bool,
-            false
-        )
-
-        XCTAssertEqual(
-            response.json["valid"] as? Bool,
-            false
-        )
-    }
-
-    // MARK: - Invalid License
-
-    func testInvalidLicenseIsRejected() async throws {
-
-        let response =
-            try await sendRequest(
-                endpoint: "/validate",
-                licenseKey: "LIDWARP-INVALID-DO-NOT-USE",
-                deviceID: "github-actions-invalid-\(UUID().uuidString)"
-            )
-
-        XCTAssertEqual(
-            response.statusCode,
-            401,
-            "Invalid license should return HTTP 401"
-        )
-
-        XCTAssertEqual(
-            response.json["success"] as? Bool,
-            false
-        )
-
-        XCTAssertEqual(
-            response.json["valid"] as? Bool,
-            false
-        )
-    }
-
-    // MARK: - Device Limit
-
-    func testTwoDeviceLimit() async throws {
-
-        let deviceOne =
-            "github-actions-device-one-\(UUID().uuidString)"
-
-        let deviceTwo =
-            "github-actions-device-two-\(UUID().uuidString)"
-
-        let deviceThree =
-            "github-actions-device-three-\(UUID().uuidString)"
-
-        let activationOne =
-            try await sendRequest(
-                endpoint: "/activate",
-                licenseKey: testLicenseKey,
-                deviceID: deviceOne
-            )
-
-        XCTAssertEqual(
-            activationOne.statusCode,
-            200,
-            "First device should activate"
-        )
-
-        let activationTwo =
-            try await sendRequest(
-                endpoint: "/activate",
-                licenseKey: testLicenseKey,
-                deviceID: deviceTwo
-            )
-
-        XCTAssertEqual(
-            activationTwo.statusCode,
-            200,
-            "Second device should activate"
-        )
-
-        let activationThree =
-            try await sendRequest(
-                endpoint: "/activate",
-                licenseKey: testLicenseKey,
-                deviceID: deviceThree
-            )
-
-        XCTAssertEqual(
-            activationThree.statusCode,
-            409,
-            "Third device should be rejected"
-        )
-
-        XCTAssertEqual(
-            activationThree.json["success"] as? Bool,
-            false
-        )
-
-        XCTAssertEqual(
-            activationThree.json["error"] as? String,
-            "Device limit reached"
-        )
-
-        XCTAssertEqual(
-            activationThree.json["maxDevices"] as? Int,
-            2
-        )
-
-        XCTAssertEqual(
-            activationThree.json["devicesUsed"] as? Int,
-            2
-        )
-
-        let deactivateOne =
-            try await sendRequest(
-                endpoint: "/deactivate",
-                licenseKey: testLicenseKey,
-                deviceID: deviceOne
-            )
-
-        XCTAssertEqual(
-            deactivateOne.statusCode,
-            200,
-            "First device should deactivate"
-        )
-
-        XCTAssertEqual(
-            deactivateOne.json["success"] as? Bool,
-            true
-        )
-
-        let activationThreeRetry =
-            try await sendRequest(
-                endpoint: "/activate",
-                licenseKey: testLicenseKey,
-                deviceID: deviceThree
-            )
-
-        XCTAssertEqual(
-            activationThreeRetry.statusCode,
-            200,
-            "Third device should activate after a slot is freed"
-        )
-
-        XCTAssertEqual(
-            activationThreeRetry.json["success"] as? Bool,
-            true
-        )
-
-        XCTAssertEqual(
-            activationThreeRetry.json["activated"] as? Bool,
-            true
-        )
-
-        _ = try await sendRequest(
-            endpoint: "/deactivate",
-            licenseKey: testLicenseKey,
-            deviceID: deviceTwo
-        )
-
-        _ = try await sendRequest(
-            endpoint: "/deactivate",
-            licenseKey: testLicenseKey,
-            deviceID: deviceThree
-        )
-    }
-
-    // MARK: - Deactivation
-
-    func testLicenseDeactivation() async throws {
-
-        let activation =
-            try await sendRequest(
-                endpoint: "/activate",
-                licenseKey: testLicenseKey,
-                deviceID: testDeviceID
-            )
-
-        XCTAssertEqual(
-            activation.statusCode,
-            200
-        )
-
+        // Deactivate device 1.
         let deactivation =
-            try await sendRequest(
+            try await request(
                 endpoint: "/deactivate",
-                licenseKey: testLicenseKey,
-                deviceID: testDeviceID
+                licenseKey: testLicense,
+                deviceID: device1
             )
 
         XCTAssertEqual(
             deactivation.statusCode,
-            200,
-            "Deactivation should return HTTP 200"
+            200
         )
 
         XCTAssertEqual(
@@ -366,92 +269,155 @@ final class LicenseServerIntegrationTests: XCTestCase {
             true
         )
 
-        let validation =
-            try await sendRequest(
+        // Device 2 must now be able to activate.
+        let replacement =
+            try await request(
+                endpoint: "/activate",
+                licenseKey: testLicense,
+                deviceID: device2
+            )
+
+        XCTAssertEqual(
+            replacement.statusCode,
+            200
+        )
+
+        XCTAssertEqual(
+            replacement.json["success"] as? Bool,
+            true
+        )
+
+        XCTAssertEqual(
+            replacement.json["activated"] as? Bool,
+            true
+        )
+
+        XCTAssertEqual(
+            replacement.json["maxDevices"] as? Int,
+            1
+        )
+
+        // Cleanup.
+        _ = try? await request(
+            endpoint: "/deactivate",
+            licenseKey: testLicense,
+            deviceID: device2
+        )
+    }
+
+    func testInvalidLicenseIsRejected() async throws {
+        let deviceID =
+            "INVALID-LICENSE-DEVICE-\(UUID().uuidString)"
+
+        let response =
+            try await request(
+                endpoint: "/activate",
+                licenseKey: "LIDWARP-INVALID-999",
+                deviceID: deviceID
+            )
+
+        XCTAssertEqual(
+            response.statusCode,
+            401
+        )
+
+        XCTAssertEqual(
+            response.json["success"] as? Bool,
+            false
+        )
+
+        XCTAssertEqual(
+            response.json["error"] as? String,
+            "Invalid license key"
+        )
+    }
+
+    func testUnactivatedDeviceIsRejected() async throws {
+        let deviceID =
+            "UNACTIVATED-\(UUID().uuidString)"
+
+        let response =
+            try await request(
                 endpoint: "/validate",
-                licenseKey: testLicenseKey,
-                deviceID: testDeviceID
+                licenseKey: testLicense,
+                deviceID: deviceID
+            )
+
+        XCTAssertEqual(
+            response.statusCode,
+            401
+        )
+
+        XCTAssertEqual(
+            response.json["success"] as? Bool,
+            false
+        )
+
+        XCTAssertEqual(
+            response.json["valid"] as? Bool,
+            false
+        )
+
+        XCTAssertEqual(
+            response.json["error"] as? String,
+            "License is not activated on this device"
+        )
+    }
+
+    func testLicenseDeactivation() async throws {
+        let deviceID =
+            "DEACTIVATE-\(UUID().uuidString)"
+
+        _ = try? await request(
+            endpoint: "/deactivate",
+            licenseKey: testLicense,
+            deviceID: deviceID
+        )
+
+        let activation =
+            try await request(
+                endpoint: "/activate",
+                licenseKey: testLicense,
+                deviceID: deviceID
+            )
+
+        XCTAssertEqual(
+            activation.statusCode,
+            200
+        )
+
+        let deactivation =
+            try await request(
+                endpoint: "/deactivate",
+                licenseKey: testLicense,
+                deviceID: deviceID
+            )
+
+        XCTAssertEqual(
+            deactivation.statusCode,
+            200
+        )
+
+        XCTAssertEqual(
+            deactivation.json["success"] as? Bool,
+            true
+        )
+
+        let validation =
+            try await request(
+                endpoint: "/validate",
+                licenseKey: testLicense,
+                deviceID: deviceID
             )
 
         XCTAssertEqual(
             validation.statusCode,
-            401,
-            "Deactivated device should no longer validate"
-        )
-
-        XCTAssertEqual(
-            validation.json["success"] as? Bool,
-            false
+            401
         )
 
         XCTAssertEqual(
             validation.json["valid"] as? Bool,
             false
-        )
-    }
-
-    // MARK: - Helpers
-
-    private struct ServerResponse {
-        let statusCode: Int
-        let json: [String: Any]
-    }
-
-    private func sendRequest(
-        endpoint: String,
-        licenseKey: String,
-        deviceID: String
-    ) async throws -> ServerResponse {
-
-        let url = try XCTUnwrap(
-            URL(string: serverURL + endpoint)
-        )
-
-        var request =
-            URLRequest(url: url)
-
-        request.httpMethod = "POST"
-
-        request.setValue(
-            "application/json",
-            forHTTPHeaderField: "Content-Type"
-        )
-
-        request.setValue(
-            "application/json",
-            forHTTPHeaderField: "Accept"
-        )
-
-        let body: [String: String] = [
-            "licenseKey": licenseKey,
-            "deviceId": deviceID
-        ]
-
-        request.httpBody =
-            try JSONSerialization.data(
-                withJSONObject: body
-            )
-
-        let (data, response) =
-            try await URLSession.shared.data(
-                for: request
-            )
-
-        let httpResponse =
-            try XCTUnwrap(
-                response as? HTTPURLResponse
-            )
-
-        let json =
-            try XCTUnwrap(
-                try JSONSerialization.jsonObject(
-                    with: data
-                ) as? [String: Any]
-            )
-
-        return ServerResponse(
-            statusCode: httpResponse.statusCode,
-            json: json
         )
     }
 }
