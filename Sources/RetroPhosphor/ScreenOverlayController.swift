@@ -5,7 +5,6 @@ import SwiftUI
 final class ScreenOverlayController {
 
     private let capture: ScreenCaptureController
-    private let renderer = PhosphorRenderer()
 
     private var window: NSWindow?
     private var hosting:
@@ -120,6 +119,9 @@ final class ScreenOverlayController {
                             windowID
                     )
 
+                    let renderer =
+                        PhosphorRenderer()
+
                     for await image in frames {
 
                         if Task.isCancelled {
@@ -132,11 +134,14 @@ final class ScreenOverlayController {
                             break
                         }
 
+                        let phosphorGreen =
+                            self.phosphor
+
                         let renderedImage =
-                            self.renderer.render(
+                            renderer.render(
                                 image: image,
                                 phosphorGreen:
-                                    self.phosphor
+                                    phosphorGreen
                             )
 
                         guard
@@ -234,19 +239,6 @@ private struct OverlayView:
 
             let height =
                 proxy.size.height
-
-            /*
-             The hinge sits near the bottom
-             of the display.
-
-             At zero fold, the entire image
-             remains visually flat.
-
-             As fold increases, the upper
-             portion rotates around the hinge
-             while the lower hinge region
-             remains fixed.
-            */
 
             let hingePosition =
                 height * 0.82
