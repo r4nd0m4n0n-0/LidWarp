@@ -1,162 +1,171 @@
-name: Build RetroPhosphor macOS App
+name: Build macOS App
 
 on:
   push:
     branches:
       - main
-      - master
-  pull_request:
   workflow_dispatch:
 
 jobs:
   build:
-    name: Build and Test macOS App
     runs-on: macos-latest
 
     steps:
+      # --------------------------------------------------
+      # Checkout
+      # --------------------------------------------------
+
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
-      - name: Show build environment
+      # --------------------------------------------------
+      # Environment
+      # --------------------------------------------------
+
+      - name: Show environment
         run: |
-          echo "========================================"
-          echo "MACOS"
-          echo "========================================"
+          echo "macOS:"
           sw_vers
-          echo ""
-          echo "========================================"
-          echo "XCODE"
-          echo "========================================"
-          xcodebuild -version
 
           echo ""
-          echo "========================================"
-          echo "SWIFT"
-          echo "========================================"
+          echo "Swift:"
           swift --version
 
           echo ""
-          echo "========================================"
-          echo "ARCHITECTURE"
-          echo "========================================"
-          uname -m
+          echo "Xcode:"
+          xcodebuild -version
 
-      - name: Resolve Swift package dependencies
+      # --------------------------------------------------
+      # Resolve package
+      # --------------------------------------------------
+
+      - name: Resolve Swift package
         run: |
           swift package resolve
 
-      - name: Build Swift package
+      # --------------------------------------------------
+      # Build
+      # --------------------------------------------------
+
+      - name: Build
         run: |
           swift build -v
 
-      - name: Run Swift tests
-        run: |
-          swift test -v
+      # --------------------------------------------------
+      # Tests
+      # --------------------------------------------------
 
-      - name: Create test output directory
-        if: always()
+      - name: Run tests
         run: |
           mkdir -p build/test-output
+
+          swift test -v 2>&1 | tee build/test-output/swift-test.txt
+
+      # --------------------------------------------------
+      # Test information
+      # --------------------------------------------------
 
       - name: Capture test information
         if: always()
         run: |
           {
-            echo "RetroPhosphor automated test run"
-            echo "================================"
-            echo ""
-            echo "Date:"
-            date
-            echo ""
-            echo "macOS:"
-            sw_vers
-            echo ""
-            echo "Swift:"
-            swift --version
-            echo ""
-            echo "Architecture:"
-            uname -m
-          } > build/test-output/test-summary.txt
+            echo "========================================"
+            echo "Swift Package"
+            echo "========================================"
+            swift package describe
 
-      - name: Inspect source and test files
+            echo ""
+            echo "========================================"
+            echo "Test Output"
+            echo "========================================"
+
+            if [ -f build/test-output/swift-test.txt ]; then
+              cat build/test-output/swift-test.txt
+            fi
+          } > build/test-output/report.txt
+
+      # --------------------------------------------------
+      # Inspect source
+      # --------------------------------------------------
+
+      - name: Inspect project
         if: always()
         run: |
+          mkdir -p build/diagnostics
+
           echo "========================================"
-          echo "SOURCE FILES"
+          echo "Project Files"
           echo "========================================"
 
-          find Sources -maxdepth 4 -type f -print | sort \
-            | tee build/test-output/source-files.txt
+          find Sources Tests -type f | sort \
+            > build/diagnostics/project-files.txt
+
+          cat build/diagnostics/project-files.txt
 
           echo ""
           echo "========================================"
-          echo "TEST FILES"
+          echo "Swift Files"
           echo "========================================"
 
-          if [ -d Tests ]; then
-            find Tests -maxdepth 4 -type f -print | sort \
-              | tee build/test-output/test-files.txt
-          else
-            echo "No Tests directory found." \
-              | tee build/test-output/test-files.txt
-          fi
+          find Sources Tests \
+            -type f \
+            \( -name "*.swift" -o -name "*.yml" \) \
+            -print \
+            > build/diagnostics/swift-files.txt
 
-      - name: Inspect build output
+          cat build/diagnostics/swift-files.txt
+
+      # --------------------------------------------------
+      # Inspect build directory
+      # --------------------------------------------------
+
+      - name: Inspect Swift build
         if: always()
         run: |
           echo "========================================"
-          echo "BUILD OUTPUT"
+          echo ".build Contents"
           echo "========================================"
 
-          find .build -maxdepth 8 -type f -print | sort \
-            | tee build/test-output/build-files.txt
+          find .build -maxdepth 4 -type f | sort \
+            > build/diagnostics/build-files.txt
 
-      - name: Collect rendered PNG previews
+          cat build/diagnostics/build-files.txt
+
+      # --------------------------------------------------
+      # Render preview artifacts
+      # --------------------------------------------------
+
+      - name: Collect render previews
         if: always()
         run: |
           mkdir -p build/render-preview
 
-          echo "========================================"
-          echo "SEARCHING FOR PNG RENDER PREVIEWS"
-          echo "========================================"
-
-          FOUND=0
+          found=0
 
           while IFS= read -r file; do
-            if [ -f "$file" ]; then
-              echo "Found PNG:"
-              echo "$file"
-
-              cp "$file" \
-                "build/render-preview/$(basename "$file")"
-
-              FOUND=1
-            fi
+            cp "$file" build/render-preview/
+            found=1
           done < <(
             find . \
               -type f \
-              -iname "*.png" \
-              ! -path "./.git/*" \
-              ! -path "./.build/*" \
-              ! -path "./build/render-preview/*" \
-              -print
+              \( -iname "*.png" -o -iname "*.PNG" \) \
+              -not -path "./.git/*" \
+              -not -path "./.build/*" \
+              -not -path "./build/*"
           )
 
-          if [ "$FOUND" -eq 0 ]; then
-            echo "No PNG preview was found."
-            echo "The test may have passed without generating a PNG artifact."
+          if [ "$found" -eq 0 ]; then
+            echo "No PNG render previews found."
+          else
+            echo "Render previews:"
+            find build/render-preview \
+              -type f \
+              -print
           fi
 
-          echo ""
-          echo "========================================"
-          echo "COLLECTED PREVIEWS"
-          echo "========================================"
-
-          find build/render-preview \
-            -maxdepth 1 \
-            -type f \
-            -print \
-            | sort
+      # --------------------------------------------------
+      # Render preview report
+      # --------------------------------------------------
 
       - name: Create render preview report
         if: always()
@@ -165,87 +174,81 @@ jobs:
             echo "RetroPhosphor Render Preview"
             echo "============================"
             echo ""
-            echo "Date:"
-            date
-            echo ""
-            echo "PNG files:"
-            find build/render-preview \
-              -maxdepth 1 \
+
+            if find build/render-preview \
               -type f \
-              -print \
-              | sort
-            echo ""
-            echo "File details:"
-            find build/render-preview \
-              -maxdepth 1 \
-              -type f \
-              -exec file {} \;
+              -iname "*.png" \
+              -print -quit | grep -q .; then
+
+              echo "PNG previews found:"
+              find build/render-preview \
+                -type f \
+                -iname "*.png" \
+                -print
+
+            else
+              echo "No PNG previews were produced."
+            fi
           } > build/render-preview/report.txt
 
-      - name: Create release directory
-        run: |
-          mkdir -p build/RetroPhosphor
+      # --------------------------------------------------
+      # Locate executable
+      # --------------------------------------------------
 
-      - name: Locate RetroPhosphor executable
+      - name: Locate executable
         run: |
-          if [ -f ".build/arm64-apple-macosx/debug/RetroPhosphor" ]; then
-            EXECUTABLE=".build/arm64-apple-macosx/debug/RetroPhosphor"
-          elif [ -f ".build/debug/RetroPhosphor" ]; then
-            EXECUTABLE=".build/debug/RetroPhosphor"
-          else
-            echo "ERROR: RetroPhosphor executable was not found."
-            echo ""
-            echo "Available files:"
-            find .build -maxdepth 8 -type f -print
+          echo "Searching for RetroPhosphor executable..."
+
+          EXECUTABLE="$(
+            find .build \
+              -type f \
+              -name "RetroPhosphor" \
+              -perm -111 \
+              | head -n 1
+          )"
+
+          if [ -z "$EXECUTABLE" ]; then
+            echo "ERROR: RetroPhosphor executable not found."
             exit 1
           fi
 
-          echo "$EXECUTABLE" \
-            | tee build/test-output/executable-path.txt
+          echo "Found:"
+          echo "$EXECUTABLE"
 
-          cp "$EXECUTABLE" \
-            "build/RetroPhosphor/RetroPhosphor"
+          cp "$EXECUTABLE" build/RetroPhosphor
 
-      - name: Inspect executable
+          chmod +x build/RetroPhosphor
+
+      # --------------------------------------------------
+      # Create application bundle
+      # --------------------------------------------------
+
+      - name: Create RetroPhosphor.app
         run: |
-          echo "========================================"
-          echo "EXECUTABLE"
-          echo "========================================"
+          APP="build/RetroPhosphor.app"
 
-          file "build/RetroPhosphor/RetroPhosphor"
-
-          echo ""
-          ls -lh "build/RetroPhosphor/RetroPhosphor"
-
-      - name: Make executable runnable
-        run: |
-          chmod +x "build/RetroPhosphor/RetroPhosphor"
-
-      - name: Create app bundle
-        run: |
-          APP="build/RetroPhosphor/RetroPhosphor.app"
-
-          mkdir -p "$APP/Contents/MacOS"
-          mkdir -p "$APP/Contents/Resources"
+          mkdir -p \
+            "$APP/Contents/MacOS" \
+            "$APP/Contents/Resources"
 
           cp \
-            "build/RetroPhosphor/RetroPhosphor" \
+            build/RetroPhosphor \
             "$APP/Contents/MacOS/RetroPhosphor"
 
           cat > "$APP/Contents/Info.plist" <<'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-            "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
-              <key>CFBundleDevelopmentRegion</key>
-              <string>en</string>
+              <key>CFBundleDisplayName</key>
+              <string>RetroPhosphor</string>
 
               <key>CFBundleExecutable</key>
               <string>RetroPhosphor</string>
 
               <key>CFBundleIdentifier</key>
-              <string>com.retro.phosphor</string>
+              <string>com.retro-phosphor.app</string>
 
               <key>CFBundleInfoDictionaryVersion</key>
               <string>6.0</string>
@@ -267,41 +270,50 @@ jobs:
 
               <key>LSUIElement</key>
               <true/>
+
+              <key>NSHighResolutionCapable</key>
+              <true/>
+
+              <key>NSScreenCaptureUsageDescription</key>
+              <string>RetroPhosphor needs Screen Recording access to capture the display and apply the visual effect.</string>
           </dict>
           </plist>
           PLIST
 
-      - name: Verify app bundle
+          echo "Application bundle:"
+          find "$APP" -maxdepth 3 -print
+
+      # --------------------------------------------------
+      # Validate Info.plist
+      # --------------------------------------------------
+
+      - name: Validate Info.plist
         run: |
-          APP="build/RetroPhosphor/RetroPhosphor.app"
-
-          echo "========================================"
-          echo "APP BUNDLE"
-          echo "========================================"
-
-          find "$APP" -maxdepth 5 -print | sort
+          plutil \
+            -lint \
+            build/RetroPhosphor.app/Contents/Info.plist
 
           echo ""
-          echo "========================================"
-          echo "INFO.PLIST"
-          echo "========================================"
+          echo "Bundle information:"
+          plutil \
+            -p \
+            build/RetroPhosphor.app/Contents/Info.plist
 
-          plutil -p "$APP/Contents/Info.plist"
+      # --------------------------------------------------
+      # Ad-hoc code signing
+      # --------------------------------------------------
 
-          echo ""
-          echo "========================================"
-          echo "APP EXECUTABLE"
-          echo "========================================"
-
-          file "$APP/Contents/MacOS/RetroPhosphor"
-
-      - name: Ad-hoc code sign app
+      - name: Code sign application
         run: |
           codesign \
             --force \
             --deep \
             --sign - \
-            "build/RetroPhosphor/RetroPhosphor.app"
+            build/RetroPhosphor.app
+
+      # --------------------------------------------------
+      # Verify signature
+      # --------------------------------------------------
 
       - name: Verify code signature
         run: |
@@ -310,90 +322,115 @@ jobs:
             --deep \
             --strict \
             --verbose=2 \
-            "build/RetroPhosphor/RetroPhosphor.app"
+            build/RetroPhosphor.app
 
-      - name: Inspect final app
+      # --------------------------------------------------
+      # Verify executable
+      # --------------------------------------------------
+
+      - name: Verify application executable
         run: |
-          echo "========================================"
-          echo "FINAL APP"
-          echo "========================================"
+          test -x \
+            build/RetroPhosphor.app/Contents/MacOS/RetroPhosphor
 
-          ls -lah "build/RetroPhosphor"
+          file \
+            build/RetroPhosphor.app/Contents/MacOS/RetroPhosphor
 
           echo ""
-          du -sh "build/RetroPhosphor/RetroPhosphor.app"
+          echo "Executable verified."
 
-      - name: Create ZIP
+      # --------------------------------------------------
+      # Create release ZIP
+      # --------------------------------------------------
+
+      - name: Create release ZIP
         run: |
-          cd build/RetroPhosphor
+          cd build
 
           ditto \
             -c \
             -k \
             --sequesterRsrc \
             --keepParent \
-            "RetroPhosphor.app" \
-            "RetroPhosphor-macOS.zip"
+            RetroPhosphor.app \
+            RetroPhosphor-macOS.zip
 
-      - name: Verify ZIP
-        run: |
-          echo "========================================"
-          echo "ZIP"
-          echo "========================================"
+          cd ..
 
+          echo "Release ZIP:"
           ls -lh \
-            "build/RetroPhosphor/RetroPhosphor-macOS.zip"
+            build/RetroPhosphor-macOS.zip
 
-          echo ""
-          echo "ZIP CONTENTS"
+      # --------------------------------------------------
+      # Create release manifest
+      # --------------------------------------------------
 
-          unzip -l \
-            "build/RetroPhosphor/RetroPhosphor-macOS.zip"
-
-      - name: Create final build report
-        if: always()
+      - name: Create release manifest
         run: |
-          REPORT="build/test-output/final-build-report.txt"
+          APP="build/RetroPhosphor.app"
 
           {
-            echo "RetroPhosphor Build Report"
-            echo "==========================="
+            echo "RetroPhosphor Release"
+            echo "====================="
             echo ""
-            echo "Build date:"
-            date
+            echo "Version: 1.0.0"
+            echo "Build: 1"
+            echo "Minimum macOS: 13.0"
             echo ""
-            echo "macOS:"
-            sw_vers
+            echo "Bundle ID:"
+            /usr/libexec/PlistBuddy \
+              -c "Print :CFBundleIdentifier" \
+              "$APP/Contents/Info.plist"
+
             echo ""
-            echo "Architecture:"
-            uname -m
-            echo ""
-            echo "Swift:"
-            swift --version
-            echo ""
-            echo "App:"
-            ls -lh "build/RetroPhosphor/RetroPhosphor.app"
+            echo "Executable:"
+            ls -lh \
+              "$APP/Contents/MacOS/RetroPhosphor"
+
             echo ""
             echo "ZIP:"
-            ls -lh "build/RetroPhosphor/RetroPhosphor-macOS.zip"
-          } > "$REPORT"
+            ls -lh \
+              build/RetroPhosphor-macOS.zip
 
-      - name: Upload macOS app
+            echo ""
+            echo "Code Signature:"
+            codesign \
+              -dv \
+              "$APP" \
+              2>&1 || true
+          } > build/RELEASE-MANIFEST.txt
+
+          cat build/RELEASE-MANIFEST.txt
+
+      # --------------------------------------------------
+      # Upload final application
+      # --------------------------------------------------
+
+      - name: Upload macOS application
         uses: actions/upload-artifact@v4
         with:
           name: RetroPhosphor-macOS
-          path: build/RetroPhosphor/RetroPhosphor-macOS.zip
+          path: |
+            build/RetroPhosphor.app
+            build/RetroPhosphor-macOS.zip
+            build/RELEASE-MANIFEST.txt
           if-no-files-found: error
-          retention-days: 14
 
-      - name: Upload render preview
+      # --------------------------------------------------
+      # Upload render previews
+      # --------------------------------------------------
+
+      - name: Upload render previews
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: RetroPhosphor-render-preview
           path: build/render-preview
           if-no-files-found: warn
-          retention-days: 14
+
+      # --------------------------------------------------
+      # Upload test report
+      # --------------------------------------------------
 
       - name: Upload test report
         if: always()
@@ -402,15 +439,15 @@ jobs:
           name: RetroPhosphor-test-report
           path: build/test-output
           if-no-files-found: warn
-          retention-days: 14
+
+      # --------------------------------------------------
+      # Upload diagnostics
+      # --------------------------------------------------
 
       - name: Upload build diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: RetroPhosphor-build-diagnostics
-          path: |
-            .build/
-            build/
+          path: build/diagnostics
           if-no-files-found: warn
-          retention-days: 7
