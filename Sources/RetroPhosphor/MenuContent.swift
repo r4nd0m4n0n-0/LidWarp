@@ -38,6 +38,7 @@ struct MenuContent: View {
             // MARK: - Fold
 
             VStack(alignment: .leading, spacing: 5) {
+
                 Text("Fold simulation")
                     .font(.caption)
 
@@ -45,6 +46,7 @@ struct MenuContent: View {
                     value: $model.foldAmount,
                     in: 0...1
                 )
+                .disabled(model.autoFold)
 
                 HStack {
                     Text("Flat")
@@ -55,6 +57,11 @@ struct MenuContent: View {
                 }
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+
+                Toggle(
+                    "Auto Fold",
+                    isOn: $model.autoFold
+                )
             }
             .padding(.vertical, 4)
             .disabled(model.isPreparing)
