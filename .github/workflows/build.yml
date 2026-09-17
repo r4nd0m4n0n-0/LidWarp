@@ -1,4 +1,4 @@
-name: Build macOS app
+name: Build and test macOS app
 
 on:
   push:
@@ -6,18 +6,50 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-and-test:
     runs-on: macos-14
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Show Swift version
-        run: swift --version
+      - name: Show environment
+        shell: bash
+        run: |
+          set -e
 
-      - name: Build
-        run: swift build -c release
+          echo "=== macOS ==="
+          sw_vers
+
+          echo
+          echo "=== Swift ==="
+          swift --version
+
+          echo
+          echo "=== Architecture ==="
+          uname -m
+
+      - name: Build release
+        run: |
+          set -e
+          swift build -c release
+
+      - name: Verify release executable
+        shell: bash
+        run: |
+          set -e
+
+          EXECUTABLE=".build/release/RetroPhosphor"
+
+          test -f "$EXECUTABLE"
+          test -x "$EXECUTABLE"
+
+          echo "Executable:"
+          file "$EXECUTABLE"
+
+          echo
+          echo "Architecture:"
+          lipo -info "$EXECUTABLE"
 
       - name: Create app bundle
         shell: bash
@@ -27,8 +59,10 @@ jobs:
           APP_DIR="artifacts/RetroPhosphor.app"
 
           rm -rf artifacts
-          mkdir -p "$APP_DIR/Contents/MacOS"
-          mkdir -p "$APP_DIR/Contents/Resources"
+
+          mkdir -p \
+            "$APP_DIR/Contents/MacOS" \
+            "$APP_DIR/Contents/Resources"
 
           cp \
             ".build/release/RetroPhosphor" \
@@ -83,15 +117,135 @@ jobs:
           chmod +x \
             "$APP_DIR/Contents/MacOS/RetroPhosphor"
 
-          # Basic bundle validation.
-          test -x \
-            "$APP_DIR/Contents/MacOS/RetroPhosphor"
+      - name: Validate app bundle
+        shell: bash
+        run: |
+          set -e
 
-          test -f \
-            "$APP_DIR/Contents/Info.plist"
+          APP_DIR="artifacts/RetroPhosphor.app"
+          EXECUTABLE="$APP_DIR/Contents/MacOS/RetroPhosphor"
+          PLIST="$APP_DIR/Contents/Info.plist"
 
-          plutil -lint \
-            "$APP_DIR/Contents/Info.plist"
+          echo "=== Bundle structure ==="
+
+          test -d "$APP_DIR"
+          test -d "$APP_DIR/Contents"
+          test -d "$APP_DIR/Contents/MacOS"
+          test -d "$APP_DIR/Contents/Resources"
+
+          test -f "$EXECUTABLE"
+          test -f "$PLIST"
+
+          test -x "$EXECUTABLE"
+
+          echo "Bundle structure OK."
+
+          echo
+          echo "=== Info.plist ==="
+
+          plutil -lint "$PLIST"
+
+          test "$(plutil -extract CFBundleExecutable raw "$PLIST")" = "RetroPhosphor"
+          test "$(plutil -extract CFBundleIdentifier raw "$PLIST")" = "com.retro-phosphor.app"
+          test "$(plutil -extract CFBundlePackageType raw "$PLIST")" = "APPL"
+          test "$(plutil -extract CFBundleShortVersionString raw "$PLIST")" = "1.0.0"
+          test "$(plutil -extract CFBundleVersion raw "$PLIST")" = "1"
+          test "$(plutil -extract LSMinimumSystemVersion raw "$PLIST")" = "13.0"
+          test "$(plutil -extract LSUIElement raw "$PLIST")" = "true"
+
+          plutil -extract NSScreenCaptureUsageDescription raw "$PLIST" > /dev/null
+
+          echo "Info.plist OK."
+
+          echo
+          echo "=== Mach-O ==="
+
+          file "$EXECUTABLE"
+          lipo -info "$EXECUTABLE"
+
+          echo
+          echo "=== Bundle validation ==="
+
+          codesign --verify --deep --strict "$APP_DIR" 2>&1 || true
+
+          echo
+          echo "Unsigned/unnotarized status above is expected for this development build."
+
+      - name: Launch smoke test
+        shell: bash
+        run: |
+          set -e
+
+          APP_PATH="$PWD/artifacts/RetroPhosphor.app"
+
+          echo "Launching:"
+          echo "$APP_PATH"
+
+          open "$APP_PATH"
+
+          echo "Waiting for application startup..."
+          sleep 2
+
+          echo
+          echo "=== Running RetroPhosphor processes ==="
+
+          pgrep -fl "RetroPhosphor" || true
+
+          if pgrep -x "RetroPhosphor" > /dev/null; then
+            echo
+            echo "RetroPhosphor launched successfully."
+          else
+            echo
+            echo "RetroPhosphor did not remain running."
+
+            echo
+            echo "=== Recent system log ==="
+
+            log show \
+              --last 2m \
+              --style compact \
+              --predicate 'process == "RetroPhosphor"' \
+              2>/dev/null || true
+
+            exit 1
+          fi
+
+      - name: Application diagnostics
+        if: always()
+        shell: bash
+        run: |
+          echo "=== Process ==="
+          pgrep -fl "RetroPhosphor" || true
+
+          echo
+          echo "=== Application information ==="
+          mdls \
+            artifacts/RetroPhosphor.app \
+            2>/dev/null || true
+
+          echo
+          echo "=== Recent RetroPhosphor logs ==="
+
+          log show \
+            --last 3m \
+            --style compact \
+            --predicate 'process == "RetroPhosphor"' \
+            2>/dev/null || true
+
+      - name: Stop smoke-test application
+        if: always()
+        shell: bash
+        run: |
+          pkill -x "RetroPhosphor" || true
+
+          sleep 1
+
+          if pgrep -x "RetroPhosphor" > /dev/null; then
+            echo "RetroPhosphor is still running."
+            exit 1
+          fi
+
+          echo "RetroPhosphor stopped cleanly."
 
       - name: Package
         shell: bash
@@ -107,6 +261,37 @@ jobs:
             --keepParent \
             RetroPhosphor.app \
             RetroPhosphor-macos.zip
+
+          test -f RetroPhosphor-macos.zip
+
+          echo
+          echo "=== ZIP contents ==="
+
+          unzip -l RetroPhosphor-macos.zip
+
+      - name: Verify packaged app
+        shell: bash
+        run: |
+          set -e
+
+          rm -rf verify-package
+
+          mkdir verify-package
+
+          unzip -q \
+            artifacts/RetroPhosphor-macos.zip \
+            -d verify-package
+
+          VERIFIED_APP="verify-package/RetroPhosphor.app"
+
+          test -d "$VERIFIED_APP"
+          test -f "$VERIFIED_APP/Contents/Info.plist"
+          test -x "$VERIFIED_APP/Contents/MacOS/RetroPhosphor"
+
+          plutil -lint \
+            "$VERIFIED_APP/Contents/Info.plist"
+
+          echo "Packaged application verified."
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
