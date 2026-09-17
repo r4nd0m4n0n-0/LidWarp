@@ -112,6 +112,30 @@ struct MenuContent: View {
             .padding(.vertical, 4)
             .disabled(model.isPreparing)
 
+            Divider()
+
+            // MARK: - Reset
+
+            Button {
+                model.resetFold()
+            } label: {
+                Label(
+                    "Reset Fold",
+                    systemImage: "arrow.counterclockwise"
+                )
+            }
+            .disabled(model.isPreparing)
+
+            Button {
+                model.resetVisualSettings()
+            } label: {
+                Label(
+                    "Reset Visual Settings",
+                    systemImage: "arrow.counterclockwise.circle"
+                )
+            }
+            .disabled(model.isPreparing)
+
             // MARK: - Permission
 
             if !model.captureAvailable {
