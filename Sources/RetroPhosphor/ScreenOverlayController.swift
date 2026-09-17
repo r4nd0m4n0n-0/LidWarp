@@ -15,6 +15,7 @@ final class ScreenOverlayController {
 
     private var phosphor = false
     private var crtGlow = false
+    private var effectIntensity: Double = 1.0
     private var fold: Double = 0
 
     init(capture: ScreenCaptureController) {
@@ -31,8 +32,21 @@ final class ScreenOverlayController {
         viewModel.crtGlow = enabled
     }
 
+    func setEffectIntensity(_ value: Double) {
+        effectIntensity = min(
+            max(value, 0),
+            1
+        )
+
+        viewModel.effectIntensity =
+            effectIntensity
+    }
+
     func setFoldAmount(_ value: Double) {
-        fold = VisualEffectMath.clampedFoldAmount(value)
+        fold = VisualEffectMath.clampedFoldAmount(
+            value
+        )
+
         viewModel.foldAmount = fold
     }
 
@@ -52,15 +66,18 @@ final class ScreenOverlayController {
         viewModel.image = nil
         viewModel.phosphorGreen = phosphor
         viewModel.crtGlow = crtGlow
+        viewModel.effectIntensity =
+            effectIntensity
         viewModel.foldAmount = fold
 
         let overlayView = OverlayView(
             viewModel: viewModel
         )
 
-        let hostingController = NSHostingController(
-            rootView: overlayView
-        )
+        let hostingController =
+            NSHostingController(
+                rootView: overlayView
+            )
 
         let overlayWindow = NSWindow(
             contentRect: screenFrame,
@@ -109,6 +126,7 @@ final class ScreenOverlayController {
                 let renderer = PhosphorRenderer()
 
                 for await image in frames {
+
                     if Task.isCancelled {
                         break
                     }
@@ -138,6 +156,7 @@ final class ScreenOverlayController {
                     self.viewModel.image =
                         renderedImage
                 }
+
             } catch {
                 self.stop()
             }
@@ -168,9 +187,11 @@ private final class OverlayViewModel: ObservableObject {
 
     @Published var image: CGImage?
 
-    @Published var phosphorGreen: Bool = false
+    @Published var phosphorGreen = false
 
-    @Published var crtGlow: Bool = false
+    @Published var crtGlow = false
+
+    @Published var effectIntensity: Double = 1.0
 
     @Published var foldAmount: Double = 0
 }
@@ -202,7 +223,8 @@ private struct OverlayView: View {
     private var shadowOpacity: Double {
         VisualEffectMath.foldShadowOpacity(
             for: viewModel.foldAmount
-        )
+        ) *
+        viewModel.effectIntensity
     }
 
     private var shadowRadius: Double {
@@ -245,17 +267,22 @@ private struct OverlayView: View {
                     .clipped()
                     .overlay {
                         if viewModel.phosphorGreen {
-                            Scanlines()
+                            Scanlines(
+                                intensity:
+                                    viewModel.effectIntensity
+                            )
                         }
                     }
                     .mask {
                         Rectangle()
                             .frame(
                                 width: width,
-                                height: hingePosition
+                                height:
+                                    hingePosition
                             )
                             .frame(
-                                maxHeight: .infinity,
+                                maxHeight:
+                                    .infinity,
                                 alignment: .top
                             )
                     }
@@ -272,7 +299,8 @@ private struct OverlayView: View {
                             z: 0
                         ),
                         anchor: .bottom,
-                        perspective: foldPerspective
+                        perspective:
+                            foldPerspective
                     )
                     .shadow(
                         color: .black.opacity(
@@ -304,7 +332,8 @@ private struct OverlayView: View {
                                     hingePosition
                             )
                             .frame(
-                                maxHeight: .infinity,
+                                maxHeight:
+                                    .infinity,
                                 alignment: .bottom
                             )
                     }
@@ -324,8 +353,15 @@ private struct OverlayView: View {
                             width: width,
                             height: height
                         )
-                        .blur(radius: 12)
-                        .opacity(0.16)
+                        .blur(
+                            radius:
+                                12 *
+                                viewModel.effectIntensity
+                        )
+                        .opacity(
+                            0.16 *
+                            viewModel.effectIntensity
+                        )
                         .blendMode(.screen)
                         .allowsHitTesting(false)
                     }
@@ -339,8 +375,14 @@ private struct OverlayView: View {
                                 RadialGradient(
                                     colors: [
                                         .clear,
-                                        .black.opacity(0.12),
-                                        .black.opacity(0.38)
+                                        .black.opacity(
+                                            0.12 *
+                                            viewModel.effectIntensity
+                                        ),
+                                        .black.opacity(
+                                            0.38 *
+                                            viewModel.effectIntensity
+                                        )
                                     ],
                                     center: .center,
                                     startRadius: 0,
@@ -359,11 +401,14 @@ private struct OverlayView: View {
                     Rectangle()
                         .fill(
                             .black.opacity(
-                                0.10 +
                                 (
-                                    0.22 *
-                                    viewModel.foldAmount
-                                )
+                                    0.10 +
+                                    (
+                                        0.22 *
+                                        viewModel.foldAmount
+                                    )
+                                ) *
+                                viewModel.effectIntensity
                             )
                         )
                         .frame(
@@ -390,7 +435,8 @@ private struct OverlayView: View {
                         .fill(
                             .white.opacity(
                                 0.025 *
-                                viewModel.foldAmount
+                                viewModel.foldAmount *
+                                viewModel.effectIntensity
                             )
                         )
                         .frame(
@@ -417,6 +463,8 @@ private struct OverlayView: View {
 
 private struct Scanlines: View {
 
+    let intensity: Double
+
     var body: some View {
         GeometryReader { _ in
 
@@ -439,7 +487,10 @@ private struct Scanlines: View {
                     context.fill(
                         Path(rectangle),
                         with: .color(
-                            .black.opacity(0.16)
+                            .black.opacity(
+                                0.16 *
+                                intensity
+                            )
                         )
                     )
 
