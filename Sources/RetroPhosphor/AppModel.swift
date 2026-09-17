@@ -1,3 +1,4 @@
+```swift
 import AppKit
 import Combine
 import ScreenCaptureKit
@@ -6,6 +7,8 @@ import ScreenCaptureKit
 final class AppModel: ObservableObject {
 
     // MARK: - Published State
+
+    @Published var isPreparing = true
 
     @Published var isEnabled = false {
         didSet {
@@ -31,6 +34,32 @@ final class AppModel: ObservableObject {
         }
     }
 
+    @Published var crtGlow = true {
+        didSet {
+            UserDefaults.standard.set(
+                crtGlow,
+                forKey: Keys.crtGlow
+            )
+
+            overlay?.setCRTGlow(
+                crtGlow
+            )
+        }
+    }
+
+    @Published var effectIntensity: Double = 1.0 {
+        didSet {
+            UserDefaults.standard.set(
+                effectIntensity,
+                forKey: Keys.effectIntensity
+            )
+
+            overlay?.setEffectIntensity(
+                effectIntensity
+            )
+        }
+    }
+
     @Published var foldAmount: Double = 0 {
         didSet {
             UserDefaults.standard.set(
@@ -40,6 +69,30 @@ final class AppModel: ObservableObject {
 
             overlay?.setFoldAmount(
                 foldAmount
+            )
+        }
+    }
+
+    @Published var autoFold = false {
+        didSet {
+            UserDefaults.standard.set(
+                autoFold,
+                forKey: Keys.autoFold
+            )
+
+            if autoFold {
+                startAutoFold()
+            } else {
+                stopAutoFold()
+            }
+        }
+    }
+
+    @Published var autoFoldSpeed: Double = 0.5 {
+        didSet {
+            UserDefaults.standard.set(
+                autoFoldSpeed,
+                forKey: Keys.autoFoldSpeed
             )
         }
     }
@@ -56,25 +109,42 @@ final class AppModel: ObservableObject {
     private let capture =
         ScreenCaptureController()
 
+    private var autoFoldTask: Task<Void, Never>?
+
     private let savedEnabledState: Bool
 
+    // MARK: - UserDefaults Keys
+
     private enum Keys {
+
         static let enabled =
             "RetroPhosphor.enabled"
 
         static let phosphorGreen =
             "RetroPhosphor.phosphorGreen"
 
+        static let crtGlow =
+            "RetroPhosphor.crtGlow"
+
+        static let effectIntensity =
+            "RetroPhosphor.effectIntensity"
+
         static let foldAmount =
             "RetroPhosphor.foldAmount"
+
+        static let autoFold =
+            "RetroPhosphor.autoFold"
+
+        static let autoFoldSpeed =
+            "RetroPhosphor.autoFoldSpeed"
     }
 
     // MARK: - Initialization
 
     init() {
 
-        // Read the saved effect state before doing
-        // anything that could trigger the isEnabled didSet.
+        // Save this before forcing the application into
+        // a disabled state while the license is checked.
         savedEnabledState =
             UserDefaults.standard.bool(
                 forKey: Keys.enabled
@@ -85,15 +155,51 @@ final class AppModel: ObservableObject {
                 forKey: Keys.phosphorGreen
             )
 
+        if UserDefaults.standard.object(
+            forKey: Keys.crtGlow
+        ) == nil {
+            crtGlow = true
+        } else {
+            crtGlow =
+                UserDefaults.standard.bool(
+                    forKey: Keys.crtGlow
+                )
+        }
+
+        if UserDefaults.standard.object(
+            forKey: Keys.effectIntensity
+        ) == nil {
+            effectIntensity = 1.0
+        } else {
+            effectIntensity =
+                UserDefaults.standard.double(
+                    forKey: Keys.effectIntensity
+                )
+        }
+
         foldAmount =
             UserDefaults.standard.double(
                 forKey: Keys.foldAmount
             )
 
-        // Always start disabled.
-        //
-        // The effect will only be restored after
-        // the license has been successfully validated.
+        autoFold =
+            UserDefaults.standard.bool(
+                forKey: Keys.autoFold
+            )
+
+        if UserDefaults.standard.object(
+            forKey: Keys.autoFoldSpeed
+        ) == nil {
+            autoFoldSpeed = 0.5
+        } else {
+            autoFoldSpeed =
+                UserDefaults.standard.double(
+                    forKey: Keys.autoFoldSpeed
+                )
+        }
+
+        // The effect must never automatically start before
+        // the license has been validated.
         isEnabled = false
 
         Task {
@@ -105,6 +211,8 @@ final class AppModel: ObservableObject {
 
     func prepare() async {
 
+        isPreparing = true
+
         captureAvailable =
             await capture.hasScreenCapturePermission()
 
@@ -113,24 +221,35 @@ final class AppModel: ObservableObject {
                 capture: capture
             )
 
+        // Apply the saved visual settings.
         overlay?.setPhosphorGreen(
             phosphorGreen
+        )
+
+        overlay?.setCRTGlow(
+            crtGlow
+        )
+
+        overlay?.setEffectIntensity(
+            effectIntensity
         )
 
         overlay?.setFoldAmount(
             foldAmount
         )
 
-        // Check the stored license when the app starts.
+        // Validate the stored license.
         await licenseManager.validate()
 
-        // Only restore the previously enabled effect
-        // after the license has been confirmed.
+        // Only restore the effect when the license
+        // is confirmed as valid.
         if licenseManager.isLicensed &&
            savedEnabledState {
 
             isEnabled = true
         }
+
+        isPreparing = false
     }
 
     // MARK: - License
@@ -145,10 +264,8 @@ final class AppModel: ObservableObject {
 
         if licenseManager.isLicensed {
 
-            // Activation succeeded.
-            //
-            // Restore the user's previous enabled
-            // state if they had the effect enabled.
+            // Restore the previous enabled state after
+            // successful activation.
             if savedEnabledState {
                 isEnabled = true
             }
@@ -179,8 +296,6 @@ final class AppModel: ObservableObject {
 
     func toggleEffect() {
 
-        // Never allow the visual effect to run
-        // without a valid license.
         guard licenseManager.isLicensed else {
 
             isEnabled = false
@@ -188,7 +303,78 @@ final class AppModel: ObservableObject {
             return
         }
 
+        guard captureAvailable else {
+            isEnabled = false
+            return
+        }
+
         isEnabled.toggle()
+    }
+
+    // MARK: - Fold Controls
+
+    func resetFold() {
+
+        autoFold = false
+        foldAmount = 0
+    }
+
+    func resetVisualSettings() {
+
+        phosphorGreen = false
+        crtGlow = true
+        effectIntensity = 1.0
+    }
+
+    // MARK: - Auto Fold
+
+    private func startAutoFold() {
+
+        autoFoldTask?.cancel()
+
+        autoFoldTask = Task { @MainActor [weak self] in
+
+            guard let self else {
+                return
+            }
+
+            while !Task.isCancelled {
+
+                let speed =
+                    max(
+                        0.1,
+                        min(
+                            1.0,
+                            self.autoFoldSpeed
+                        )
+                    )
+
+                let step =
+                    0.01 * speed
+
+                self.foldAmount += step
+
+                if self.foldAmount >= 1.0 {
+                    self.foldAmount = 0
+                }
+
+                let delay =
+                    UInt64(
+                        30_000_000
+                        / max(speed, 0.1)
+                    )
+
+                try? await Task.sleep(
+                    nanoseconds: delay
+                )
+            }
+        }
+    }
+
+    private func stopAutoFold() {
+
+        autoFoldTask?.cancel()
+        autoFoldTask = nil
     }
 
     // MARK: - Screen Recording
@@ -212,9 +398,16 @@ final class AppModel: ObservableObject {
             return
         }
 
-        // Licensing is required before the overlay
-        // can actually run.
+        // A valid license is required before the
+        // visual overlay can run.
         guard licenseManager.isLicensed else {
+
+            overlay.stop()
+
+            return
+        }
+
+        guard captureAvailable else {
 
             overlay.stop()
 
@@ -233,3 +426,4 @@ final class AppModel: ObservableObject {
         }
     }
 }
+```
