@@ -22,6 +22,14 @@ let package = Package(
         .executableTarget(
             name: "RetroPhosphor",
             path: "Sources/RetroPhosphor"
+        ),
+
+        .testTarget(
+            name: "RetroPhosphorTests",
+            dependencies: [
+                "RetroPhosphor"
+            ],
+            path: "Tests/RetroPhosphorTests"
         )
     ]
 )
