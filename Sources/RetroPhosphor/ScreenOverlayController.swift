@@ -174,31 +174,19 @@ private struct OverlayView: View {
         )
     }
 
-    private var foldTopScale: Double {
-        VisualEffectMath.foldTopScale(
-            for: foldAmount
-        )
-    }
-
-    private var foldBottomScale: Double {
-        VisualEffectMath.foldBottomScale(
-            for: foldAmount
-        )
-    }
-
     private var foldPerspective: Double {
         VisualEffectMath.foldPerspective(
             for: foldAmount
         )
     }
 
-    private var foldShadowOpacity: Double {
+    private var shadowOpacity: Double {
         VisualEffectMath.foldShadowOpacity(
             for: foldAmount
         )
     }
 
-    private var foldShadowRadius: Double {
+    private var shadowRadius: Double {
         VisualEffectMath.foldShadowRadius(
             for: foldAmount
         )
@@ -206,9 +194,33 @@ private struct OverlayView: View {
 
     var body: some View {
         GeometryReader { proxy in
+
+            let width = proxy.size.width
+            let height = proxy.size.height
+
+            /*
+             The hinge sits near the bottom of the display.
+
+             At zero fold, the entire image remains visually flat.
+
+             As fold increases, the upper portion rotates around
+             the hinge while the lower hinge region remains fixed.
+            */
+            let hingePosition =
+                height * 0.82
+
+            let hingeHeight =
+                max(
+                    2,
+                    height * 0.035
+                )
+
             ZStack {
 
                 if let image {
+
+                    // MARK: Main upper screen section
+
                     Image(
                         decorative: image,
                         scale: 1,
@@ -217,23 +229,26 @@ private struct OverlayView: View {
                     .resizable()
                     .scaledToFill()
                     .frame(
-                        width: proxy.size.width,
-                        height: proxy.size.height
+                        width: width,
+                        height: height
                     )
                     .clipped()
-
                     .overlay {
                         if phosphorGreen {
                             Scanlines()
                         }
                     }
-
-                    .scaleEffect(
-                        x: 1,
-                        y: foldBottomScale,
-                        anchor: .bottom
-                    )
-
+                    .mask {
+                        Rectangle()
+                            .frame(
+                                width: width,
+                                height: hingePosition
+                            )
+                            .frame(
+                                maxHeight: .infinity,
+                                alignment: .top
+                            )
+                    }
                     .rotation3DEffect(
                         .degrees(foldRotation),
                         axis: (
@@ -244,19 +259,83 @@ private struct OverlayView: View {
                         anchor: .bottom,
                         perspective: foldPerspective
                     )
-
-                    .scaleEffect(
-                        x: 1,
-                        y: foldTopScale,
-                        anchor: .top
-                    )
-
                     .shadow(
                         color: .black.opacity(
-                            foldShadowOpacity
+                            shadowOpacity
                         ),
-                        radius: foldShadowRadius
+                        radius: shadowRadius
                     )
+
+                    // MARK: Fixed lower hinge section
+
+                    Image(
+                        decorative: image,
+                        scale: 1,
+                        orientation: .up
+                    )
+                    .resizable()
+                    .scaledToFill()
+                    .frame(
+                        width: width,
+                        height: height
+                    )
+                    .clipped()
+                    .mask {
+                        Rectangle()
+                            .frame(
+                                width: width,
+                                height: height - hingePosition
+                            )
+                            .frame(
+                                maxHeight: .infinity,
+                                alignment: .bottom
+                            )
+                    }
+
+                    // MARK: Hinge / crease
+
+                    Rectangle()
+                        .fill(
+                            .black.opacity(
+                                0.10 +
+                                (0.22 * foldAmount)
+                            )
+                        )
+                        .frame(
+                            width: width,
+                            height: hingeHeight
+                        )
+                        .position(
+                            x: width / 2,
+                            y: hingePosition
+                        )
+                        .blur(
+                            radius:
+                                1 +
+                                (3 * foldAmount)
+                        )
+                        .allowsHitTesting(false)
+
+                    // Highlight immediately above the hinge
+
+                    Rectangle()
+                        .fill(
+                            .white.opacity(
+                                0.025 *
+                                foldAmount
+                            )
+                        )
+                        .frame(
+                            width: width,
+                            height: 1
+                        )
+                        .position(
+                            x: width / 2,
+                            y:
+                                hingePosition -
+                                (hingeHeight / 2)
+                        )
+                        .allowsHitTesting(false)
                 }
             }
         }
