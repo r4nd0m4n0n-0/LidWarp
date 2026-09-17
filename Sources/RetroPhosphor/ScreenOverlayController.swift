@@ -14,6 +14,7 @@ final class ScreenOverlayController {
     private let viewModel = OverlayViewModel()
 
     private var phosphor = false
+    private var crtGlow = false
     private var fold: Double = 0
 
     init(capture: ScreenCaptureController) {
@@ -23,6 +24,11 @@ final class ScreenOverlayController {
     func setPhosphorGreen(_ enabled: Bool) {
         phosphor = enabled
         viewModel.phosphorGreen = enabled
+    }
+
+    func setCRTGlow(_ enabled: Bool) {
+        crtGlow = enabled
+        viewModel.crtGlow = enabled
     }
 
     func setFoldAmount(_ value: Double) {
@@ -35,7 +41,9 @@ final class ScreenOverlayController {
             return
         }
 
-        guard let screen = NSScreen.main ?? NSScreen.screens.first else {
+        guard let screen =
+            NSScreen.main ?? NSScreen.screens.first
+        else {
             return
         }
 
@@ -43,6 +51,7 @@ final class ScreenOverlayController {
 
         viewModel.image = nil
         viewModel.phosphorGreen = phosphor
+        viewModel.crtGlow = crtGlow
         viewModel.foldAmount = fold
 
         let overlayView = OverlayView(
@@ -60,7 +69,9 @@ final class ScreenOverlayController {
             defer: false
         )
 
-        overlayWindow.contentViewController = hostingController
+        overlayWindow.contentViewController =
+            hostingController
+
         overlayWindow.isOpaque = false
         overlayWindow.backgroundColor = .clear
         overlayWindow.level = .screenSaver
@@ -106,22 +117,26 @@ final class ScreenOverlayController {
                         break
                     }
 
-                    let phosphorGreen = self.phosphor
+                    let phosphorGreen =
+                        self.phosphor
 
-                    let renderedImage = await Task.detached(
-                        priority: .userInitiated
-                    ) {
-                        renderer.render(
-                            image: image,
-                            phosphorGreen: phosphorGreen
-                        )
-                    }.value
+                    let renderedImage =
+                        await Task.detached(
+                            priority: .userInitiated
+                        ) {
+                            renderer.render(
+                                image: image,
+                                phosphorGreen:
+                                    phosphorGreen
+                            )
+                        }.value
 
                     guard let renderedImage else {
                         continue
                     }
 
-                    self.viewModel.image = renderedImage
+                    self.viewModel.image =
+                        renderedImage
                 }
             } catch {
                 self.stop()
@@ -154,6 +169,8 @@ private final class OverlayViewModel: ObservableObject {
     @Published var image: CGImage?
 
     @Published var phosphorGreen: Bool = false
+
+    @Published var crtGlow: Bool = false
 
     @Published var foldAmount: Double = 0
 }
@@ -200,7 +217,8 @@ private struct OverlayView: View {
             let width = proxy.size.width
             let height = proxy.size.height
 
-            let hingePosition = height * 0.82
+            let hingePosition =
+                height * 0.82
 
             let hingeHeight = max(
                 2,
@@ -211,7 +229,7 @@ private struct OverlayView: View {
 
                 if let image = viewModel.image {
 
-                    // MARK: Folded upper section
+                    // MARK: Folded Upper Section
 
                     Image(
                         decorative: image,
@@ -263,7 +281,7 @@ private struct OverlayView: View {
                         radius: shadowRadius
                     )
 
-                    // MARK: Fixed lower section
+                    // MARK: Fixed Lower Section
 
                     Image(
                         decorative: image,
@@ -281,7 +299,9 @@ private struct OverlayView: View {
                         Rectangle()
                             .frame(
                                 width: width,
-                                height: height - hingePosition
+                                height:
+                                    height -
+                                    hingePosition
                             )
                             .frame(
                                 maxHeight: .infinity,
@@ -289,7 +309,52 @@ private struct OverlayView: View {
                             )
                     }
 
-                    // MARK: Hinge shadow
+                    // MARK: CRT Glow
+
+                    if viewModel.crtGlow {
+
+                        Image(
+                            decorative: image,
+                            scale: 1,
+                            orientation: .up
+                        )
+                        .resizable()
+                        .scaledToFill()
+                        .frame(
+                            width: width,
+                            height: height
+                        )
+                        .blur(radius: 12)
+                        .opacity(0.16)
+                        .blendMode(.screen)
+                        .allowsHitTesting(false)
+                    }
+
+                    // MARK: CRT Vignette
+
+                    if viewModel.crtGlow {
+
+                        Rectangle()
+                            .fill(
+                                RadialGradient(
+                                    colors: [
+                                        .clear,
+                                        .black.opacity(0.12),
+                                        .black.opacity(0.38)
+                                    ],
+                                    center: .center,
+                                    startRadius: 0,
+                                    endRadius:
+                                        max(
+                                            width,
+                                            height
+                                        ) * 0.72
+                                )
+                            )
+                            .allowsHitTesting(false)
+                    }
+
+                    // MARK: Hinge Shadow
 
                     Rectangle()
                         .fill(
@@ -319,7 +384,7 @@ private struct OverlayView: View {
                         )
                         .allowsHitTesting(false)
 
-                    // MARK: Hinge highlight
+                    // MARK: Hinge Highlight
 
                     Rectangle()
                         .fill(
