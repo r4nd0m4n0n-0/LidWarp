@@ -88,6 +88,12 @@ final class LicenseServerIntegrationTests: XCTestCase {
             response.json["licenseKey"] as? String,
             testLicenseKey
         )
+
+        _ = try await sendRequest(
+            endpoint: "/deactivate",
+            licenseKey: testLicenseKey,
+            deviceID: testDeviceID
+        )
     }
 
     // MARK: - Validation
@@ -127,6 +133,12 @@ final class LicenseServerIntegrationTests: XCTestCase {
         XCTAssertEqual(
             validation.json["valid"] as? Bool,
             true
+        )
+
+        _ = try await sendRequest(
+            endpoint: "/deactivate",
+            licenseKey: testLicenseKey,
+            deviceID: testDeviceID
         )
     }
 
@@ -186,6 +198,132 @@ final class LicenseServerIntegrationTests: XCTestCase {
         XCTAssertEqual(
             response.json["valid"] as? Bool,
             false
+        )
+    }
+
+    // MARK: - Device Limit
+
+    func testTwoDeviceLimit() async throws {
+
+        let deviceOne =
+            "github-actions-device-one-\(UUID().uuidString)"
+
+        let deviceTwo =
+            "github-actions-device-two-\(UUID().uuidString)"
+
+        let deviceThree =
+            "github-actions-device-three-\(UUID().uuidString)"
+
+        let activationOne =
+            try await sendRequest(
+                endpoint: "/activate",
+                licenseKey: testLicenseKey,
+                deviceID: deviceOne
+            )
+
+        XCTAssertEqual(
+            activationOne.statusCode,
+            200,
+            "First device should activate"
+        )
+
+        let activationTwo =
+            try await sendRequest(
+                endpoint: "/activate",
+                licenseKey: testLicenseKey,
+                deviceID: deviceTwo
+            )
+
+        XCTAssertEqual(
+            activationTwo.statusCode,
+            200,
+            "Second device should activate"
+        )
+
+        let activationThree =
+            try await sendRequest(
+                endpoint: "/activate",
+                licenseKey: testLicenseKey,
+                deviceID: deviceThree
+            )
+
+        XCTAssertEqual(
+            activationThree.statusCode,
+            409,
+            "Third device should be rejected"
+        )
+
+        XCTAssertEqual(
+            activationThree.json["success"] as? Bool,
+            false
+        )
+
+        XCTAssertEqual(
+            activationThree.json["error"] as? String,
+            "Device limit reached"
+        )
+
+        XCTAssertEqual(
+            activationThree.json["maxDevices"] as? Int,
+            2
+        )
+
+        XCTAssertEqual(
+            activationThree.json["devicesUsed"] as? Int,
+            2
+        )
+
+        let deactivateOne =
+            try await sendRequest(
+                endpoint: "/deactivate",
+                licenseKey: testLicenseKey,
+                deviceID: deviceOne
+            )
+
+        XCTAssertEqual(
+            deactivateOne.statusCode,
+            200,
+            "First device should deactivate"
+        )
+
+        XCTAssertEqual(
+            deactivateOne.json["success"] as? Bool,
+            true
+        )
+
+        let activationThreeRetry =
+            try await sendRequest(
+                endpoint: "/activate",
+                licenseKey: testLicenseKey,
+                deviceID: deviceThree
+            )
+
+        XCTAssertEqual(
+            activationThreeRetry.statusCode,
+            200,
+            "Third device should activate after a slot is freed"
+        )
+
+        XCTAssertEqual(
+            activationThreeRetry.json["success"] as? Bool,
+            true
+        )
+
+        XCTAssertEqual(
+            activationThreeRetry.json["activated"] as? Bool,
+            true
+        )
+
+        _ = try await sendRequest(
+            endpoint: "/deactivate",
+            licenseKey: testLicenseKey,
+            deviceID: deviceTwo
+        )
+
+        _ = try await sendRequest(
+            endpoint: "/deactivate",
+            licenseKey: testLicenseKey,
+            deviceID: deviceThree
         )
     }
 
