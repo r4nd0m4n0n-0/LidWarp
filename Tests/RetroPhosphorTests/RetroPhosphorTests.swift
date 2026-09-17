@@ -3,102 +3,162 @@ import XCTest
 
 final class RetroPhosphorTests: XCTestCase {
 
-    func testFoldAmountClampsToValidRange() {
-        let values: [Double] = [
-            -1.0,
-            0.0,
-            0.25,
-            0.5,
-            0.75,
-            1.0,
-            2.0
-        ]
+    func testFoldAmountClampsBelowZero() {
+        XCTAssertEqual(
+            VisualEffectMath.clampedFoldAmount(-1.0),
+            0.0
+        )
 
-        for value in values {
-            let clamped = min(max(value, 0), 1)
-
-            XCTAssertGreaterThanOrEqual(
-                clamped,
-                0,
-                "Fold amount went below 0 for input \(value)"
-            )
-
-            XCTAssertLessThanOrEqual(
-                clamped,
-                1,
-                "Fold amount went above 1 for input \(value)"
-            )
-        }
+        XCTAssertEqual(
+            VisualEffectMath.clampedFoldAmount(-100.0),
+            0.0
+        )
     }
 
-    func testFoldAmountProducesExpectedBoundaryValues() {
+    func testFoldAmountClampsAboveOne() {
         XCTAssertEqual(
-            min(max(-1.0, 0), 1),
-            0
+            VisualEffectMath.clampedFoldAmount(1.5),
+            1.0
         )
 
         XCTAssertEqual(
-            min(max(0.0, 0), 1),
-            0
+            VisualEffectMath.clampedFoldAmount(100.0),
+            1.0
+        )
+    }
+
+    func testFoldAmountPreservesValidValues() {
+        XCTAssertEqual(
+            VisualEffectMath.clampedFoldAmount(0.0),
+            0.0
         )
 
         XCTAssertEqual(
-            min(max(0.5, 0), 1),
+            VisualEffectMath.clampedFoldAmount(0.25),
+            0.25
+        )
+
+        XCTAssertEqual(
+            VisualEffectMath.clampedFoldAmount(0.5),
             0.5
         )
 
         XCTAssertEqual(
-            min(max(1.0, 0), 1),
-            1
+            VisualEffectMath.clampedFoldAmount(0.75),
+            0.75
         )
 
         XCTAssertEqual(
-            min(max(2.0, 0), 1),
-            1
+            VisualEffectMath.clampedFoldAmount(1.0),
+            1.0
         )
     }
 
-    func testFoldRotationCalculation() {
-        let maximumRotation = 22.0
-
-        for foldAmount in stride(
-            from: 0.0,
-            through: 1.0,
-            by: 0.1
-        ) {
-            let rotation =
-                -maximumRotation * foldAmount
-
-            XCTAssertLessThanOrEqual(
-                rotation,
-                0
-            )
-
-            XCTAssertGreaterThanOrEqual(
-                rotation,
-                -maximumRotation
-            )
-        }
+    func testFlatFoldProducesNoRotation() {
+        XCTAssertEqual(
+            VisualEffectMath.foldRotation(
+                for: 0
+            ),
+            0
+        )
     }
 
-    func testFoldScaleCalculation() {
-        for foldAmount in stride(
-            from: 0.0,
-            through: 1.0,
-            by: 0.1
-        ) {
-            let scale =
-                1 - (0.10 * foldAmount)
+    func testMaximumFoldProducesMaximumRotation() {
+        XCTAssertEqual(
+            VisualEffectMath.foldRotation(
+                for: 1
+            ),
+            -22
+        )
+    }
 
-            XCTAssertGreaterThanOrEqual(
-                scale,
-                0.90
-            )
+    func testHalfFoldProducesHalfRotation() {
+        XCTAssertEqual(
+            VisualEffectMath.foldRotation(
+                for: 0.5
+            ),
+            -11
+        )
+    }
 
-            XCTAssertLessThanOrEqual(
-                scale,
-                1.0
-            )
-        }
+    func testFlatFoldPreservesFullHeight() {
+        XCTAssertEqual(
+            VisualEffectMath.foldVerticalScale(
+                for: 0
+            ),
+            1.0
+        )
+    }
+
+    func testMaximumFoldCompressesHeightByTenPercent() {
+        XCTAssertEqual(
+            VisualEffectMath.foldVerticalScale(
+                for: 1
+            ),
+            0.90
+        )
+    }
+
+    func testHalfFoldCompressesHeightByFivePercent() {
+        XCTAssertEqual(
+            VisualEffectMath.foldVerticalScale(
+                for: 0.5
+            ),
+            0.95
+        )
+    }
+
+    func testPhosphorDisabledKeepsNormalSaturation() {
+        XCTAssertEqual(
+            VisualEffectMath.phosphorSaturation(
+                enabled: false
+            ),
+            1.0
+        )
+    }
+
+    func testPhosphorEnabledRemovesColorSaturation() {
+        XCTAssertEqual(
+            VisualEffectMath.phosphorSaturation(
+                enabled: true
+            ),
+            0.0
+        )
+    }
+
+    func testPhosphorDisabledKeepsNormalBrightness() {
+        XCTAssertEqual(
+            VisualEffectMath.phosphorBrightness(
+                enabled: false
+            ),
+            0.0
+        )
+    }
+
+    func testPhosphorEnabledAddsSmallBrightnessBoost() {
+        XCTAssertEqual(
+            VisualEffectMath.phosphorBrightness(
+                enabled: true
+            ),
+            0.02
+        )
+    }
+
+    func testPhosphorDisabledKeepsNormalContrast() {
+        XCTAssertEqual(
+            VisualEffectMath.phosphorContrast(
+                enabled: false
+            ),
+            1.0
+        )
+    }
+
+    func testPhosphorEnabledIncreasesContrast() {
+        XCTAssertEqual(
+            VisualEffectMath.phosphorContrast(
+                enabled: true
+            ),
+            1.08
+        )
     }
 }
